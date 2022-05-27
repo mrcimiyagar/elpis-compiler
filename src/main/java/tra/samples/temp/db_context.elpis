@@ -1,0 +1,18 @@
+
+define function createDbClient
+  return Pg.connect(username: dbUsername, password: dbPassword, dbName: dbName)
+
+define class DbContext
+  on created
+    this.db = createDbClient()
+  define prop db = EMPTY
+  define function exec with params query
+    return Pg.query(database: this.db, query: query)
+  define function execPrepared with params query, inputs
+    return Pg.queryPrepared(database: this.db, query: query, inputs: inputs)
+  define function beginTx
+    this.exec(query: "BEGIN")
+  define function commit
+    this.exec(query: "COMMIT")
+  define function close
+    Pg.disconnect(database: this.db)

@@ -1,0 +1,165 @@
+
+define class time
+  on created
+    EMPTY
+
+define class Response
+  on created with params statusCode, content
+    remember statusCode as this.statusCode
+    remember content as this.content
+  define prop statusCode with value : 0
+  define prop content with value : ""
+  define function named stringify
+    return "{" + "statusCode: " + this.statusCode + " ," + " content : " + do stringify(obj: this.content) + "}"
+
+define class Blockchain
+  on created
+    do this.create_block(nonce: 1, previous_hash: "0")
+  define prop chain with value : []
+  define prop transactions with value : []
+  define prop nodes with value : []
+  define function named create_block with params nonce, previous_hash
+    remember {index: do len(arr: this.chain) + 1, timestamp: do time.now(), nonce: nonce, previous_hash: previous_hash, transactions: this.transactions} as block
+    remember [] as this.transactions
+    do append(list: this.chain, listItem: block)
+    return block
+  define function named get_last_block
+    return do last(arr: this.chain)
+  define function named proof_of_work with params previous_nonce
+    remember 1 as new_nonce
+    remember 0 as check_nonce
+    loop until check_nonce == 0
+      remember do sha256(content: (new_nonce ^ 2) - (previous_nonce ^ 2) + "") as hash_operation
+      if hash_operation[0:4] == "0000" then
+        remember 1 as check_nonce
+      else
+        remember new_nonce + 1 as new_nonce
+    return new_nonce
+  define function named hash with params block
+    remember do stringify(obj: block) as encoded_block
+    return do sha256(content: encoded_block)
+  define function named is_chain_valid with params chain
+    remember chain[0] as previous_block
+    remember 1 as block_index
+    loop until block_index < do len(arr: chain)
+      do print(text: block_index)
+      remember chain[block_index] as block
+      do print(text: "********************************************************************************")
+      do print(text: block)
+      if block.previous_hash != do this.hash(block: previous_block) then
+        return 0
+      remember previous_block.nonce as previous_nonce
+      remember block.nonce as nonce
+      remember do sha256(content: (nonce ^ 2) - (previous_nonce ^ 2) + "") as hash_operation
+      if hash_operation[0:4] != "0000" then
+        return 0
+      remember block as previous_block
+      remember block_index + 1 as block_index
+    return 1
+  define function named add_transaction with params sender, receiver, amount
+    do append(list: this.transactions, listItem: {sender: sender, receiver: receiver, amount: amount, time: do time.now()})
+    remember do this.get_last_block() as previous_block
+    do print(text: this.chain)
+    return previous_block.index + 1
+  define function named add_node with params address
+    do append(list: this.nodes, listItem: address)
+  define function named replace_chain
+    remember this.nodes as network
+    remember EMPTY as longest_chain
+    remember do len(arr: this.chain) as max_length
+    loop over network using node as bowl
+      remember do get(url: "http://" + node + "/get_chain") as response
+      if response.status_code == 200 then
+        remember response.data["length"] as length
+        remember response.data["chain"] as chain
+        if length > max_length and do this.is_chain_valid(chain: chain) == 1 then
+          remember length as max_length
+          remember chain as longest_chain
+    if longest_chain != EMPTY and do len(arr: longest_chain) then
+      remember longest_chain as this.chain
+      return true
+    return false
+
+remember instance of Blockchain () as blockchain
+do print(text: "Blockchain initialized")
+remember do replace(str: do uuid(), from: "-", to: "") as node_address
+remember "e36f0158f0aed45b3bc755dc52ed4560d" as root_node
+
+define function named mine_block with params request
+  remember EMPTY as response
+  if request.method == "GET" then
+    remember do blockchain.get_last_block() as previous_block
+    remember previous_block.nonce as previous_nonce
+    remember do blockchain.proof_of_work(previous_nonce: previous_nonce) as nonce
+    remember do blockchain.hash(block: previous_block) as previous_hash
+    do blockchain.add_transaction(sender: root_node, receiver: node_address, amount: 1)
+    remember do blockchain.create_block(nonce: nonce, previous_hash: previous_hash) as block
+    remember {message: "Congratulations, you just mined a block!", index: block.index, timestamp: block.timestamp, nonce: block.nonce, previous_hash: block.previous_hash, transactions: block.transactions} as response
+  return instance of Response(statusCode: 200, content: response)
+
+define function named get_chain with params request
+  remember EMPTY as response
+  if request.method == "GET" then
+    remember {chain: blockchain.chain, length: do len(arr: blockchain.chain)} as response
+  return instance of Response (statusCode: 200, content: response)
+
+define function named is_valid with params request
+  remember EMPTY as response
+  if request.method == "GET" then
+    remember do blockchain.is_chain_valid(chain: blockchain.chain) as validated
+    if validated == 1 then
+      remember {message: "All good. The Blockchain is valid."} as response
+    else
+      remember {message: "Houston, we have a problem. The Blockchain is not valid."} as response
+  return instance of Response (statusCode: 200, content: response)
+
+define function named add_transaction with params request
+  if request.method == "POST" then
+    remember ["sender", "receiver", "amount"] as transaction_keys
+    if do match_object_structure(structure: transaction_keys, obj: request.data) is not satisfied then
+      return instance of Response(statusCode: 400, content: "Some elements of the transaction are missing")
+    remember do blockchain.add_transaction(sender: request.data.sender, receiver: request.data.receiver, amount: request.data.amount) as index
+    return instance of Response (statusCode: 200, content: {message: "This transaction will be added to Block " + index})
+  return EMPTY
+
+define function named connect_node with params request
+  remember EMPTY as response
+  if request.method == "POST" then
+    remember request.data["nodes"] as nodes
+    if nodes == EMPTY then
+      return instance of Response(statusCode: 400, content: "No node")
+    loop over nodes using node as bowl
+      do blockchain.add_node(address: node)
+    remember {message: "All the nodes are now connected. The TraCoin Blockchain now contains the following nodes:", total_nodes: blockchain.nodes} as response
+  return instance of Response(statusCode: 200, content: response)
+
+define function named replace_chain with params request
+  if request.method == "GET" then
+    remember EMPTY as response
+    if do blockchain.replace_chain() then
+      remember {message: "The nodes had different chains so the chain was replaced by the longest one.", new_chain: blockchain.chain} as response
+    else
+      remember {message: "All good. The chain is the largest one.", actual_chain: blockchain.chain} as response
+  return instance of Response(statusCode: 200, content: response)
+
+do print(text: "starting test...")
+
+do print(text: "requesting add transaction...")
+do print(text: "response: " + do stringify(obj: do add_transaction(request: {method: "POST", data: {sender: root_node, receiver: "Edward", amount: 1000}})))
+do print(text: "requesting mine...")
+do print(text: "response : " + do stringify(obj: do mine_block(request: {method: "GET"})))
+do print(text: "requesting validation check...")
+do print(text: "response : " + do stringify(obj: do is_valid(request: {method: "GET"})))
+
+do print(text: "response: " + do stringify(obj: do add_transaction(request: {method: "POST", data: {sender: root_node, receiver: "Lara", amount: 1000}})))
+do print(text: "requesting mine...")
+do print(text: "response : " + do stringify(obj: do mine_block(request: {method: "GET"})))
+do print(text: "requesting validation check...")
+do print(text: "response : " + do stringify(obj: do is_valid(request: {method: "GET"})))
+
+loop for 1000 times by step 1
+  do print(text: "response: " + do stringify(obj: do add_transaction(request: {method: "POST", data: {sender: "Edward", receiver: "Lara", amount: 1}})))
+  do print(text: "requesting mine...")
+  do print(text: "response : " + do stringify(obj: do mine_block(request: {method: "GET"})))
+  do print(text: "requesting validation check...")
+  do print(text: "response : " + do stringify(obj: do is_valid(request: {method: "GET"})))

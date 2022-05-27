@@ -1,0 +1,57 @@
+
+remember instance of DbContext () as dbContext
+remember do dbContext.exec(
+            query: "
+                CREATE OR REPLACE FUNCTION createUser (varchar(50), varchar(50), varchar(50), varchar(50), varchar(20), varchar(20))
+                RETURNS bigint AS $userId$
+                declare
+                      userId bigint;
+                  BEGIN
+                      if (select count(*) from \"users\" where username = $1) = 0 then
+                          insert into \"users\" (\"username\", \"password\", \"firstName\", \"lastName\", \"phone\", \"role\")
+                             values ($1, $2, $3, $4, $5, $6) returning \"userId\" into userId;
+                      else
+                          select -1 into userId;
+                      end if;
+                      return userId;
+                  END;
+                  $userId$ LANGUAGE plpgsql;
+              ") as funcCreator
+do Pg.closeRead(iterator: funcCreator)
+remember do dbContext.exec(
+            query: "
+                  CREATE OR REPLACE FUNCTION createWorkplace (bigint, varchar(50), varchar(512), varchar(20), bigint, bigint, bigint)
+                  RETURNS bigint AS $workplaceId$
+                  declare
+                      workplaceId bigint;
+                  BEGIN
+                      if (select count(*) from \"workplaces\" where \"ownerId\" = $1) = 0 then
+                          insert into \"workplaces\" (\"ownerId\", \"title\", \"address\", \"phone\", \"longitude\", \"latitude\", \"avatarId\")
+                             values ($1, $2, $3, $4, $5, $6, $7) returning \"workplaceId\" into workplaceId;
+                      else
+                          select -1 into workplaceId;
+                      end if;
+                      return workplaceId;
+                  END;
+                  $workplaceId$ LANGUAGE plpgsql;
+              ") as funcCreator
+do Pg.closeRead(iterator: funcCreator)
+remember do dbContext.exec(
+            query: "
+                  CREATE OR REPLACE FUNCTION createComment (userId bigint, workplaceId bigint, text varchar(512), dateTime bigint)
+                  RETURNS bigint AS $commentId$
+                  declare
+                      commentId bigint;
+                  BEGIN
+                      if (select count(*) from \"comments\" where \"userId\" = userId and \"workplaceId\" = workplaceId) = 0 then
+                          insert into \"comments\" (\"userId\", \"workplaceId\", \"text\", \"dateTime\")
+                             values ($1, $2, $3, $4) returning \"commentId\" into commentId;
+                      else
+                          select -1 into commentId;
+                      end if;
+                      return commentId;
+                  END;
+                  $commentId$ LANGUAGE plpgsql;
+              ") as funcCreator
+do Pg.closeRead(iterator: funcCreator)
+do dbContext.close()

@@ -1,0 +1,51 @@
+
+define function named add_comment with params request
+  if request.headers.token == EMPTY then
+    return {status: "error", errorCode: "e-106", message: "invalid token"}
+  remember instance of DbContext () as dbContext
+  remember do dbContext.execPrepared(query: "select * from \"sessions\" where \"token\" = $1;",
+                                     inputs: [request.headers.token]
+           ) as sessionSelector
+  remember do Pg.read(iterator: sessionSelector) as session
+  do Pg.closeRead(iterator: sessionSelector)
+  if session == EMPTY then
+    return {status: "error", errorCode: "e-108", message: "invalid token"}
+  remember request.body.text as text
+  remember do longify(input: request.body.workplaceId) as workplaceId
+  if workplaceId <= 0 then
+    return {status: "error", errorCode: "e-001", message: "workplace must be selected."}
+  if (text == EMPTY) or (do len(obj: text) == 0) or (do len(obj: text) > 512) then
+    return {status: "error", errorCode: "e-001", message: "comment content can not be too long or empty"}
+  remember do time.now() as currentTime
+  remember do dbContext.execPrepared(query: "select createComment($1, $2, $3, $4) as \"commentId\";",
+                                     inputs: [session.userId, workplaceId, text, currentTime]) as commentCreator
+  remember do Pg.read(iterator: commentCreator) as comment
+  if comment.commentId == "-1" then
+    return {status: "error", errorCode: "e-001", message: "comment has already been submitted before."}
+  else
+    return ({
+        status: "success",
+        comment: {
+            commentId: comment.commentId,
+            userId: session.userId,
+            workplaceId: workplaceId,
+            text:text,
+            dateTime: currentTime
+        },
+        message: "comment created successfully"
+    })
+
+define function named get_comments with params request
+  remember request.body.workplaceId as workplaceId
+  if (workplaceId == EMPTY) or (workplaceId <= 0) then
+    return {status: "error", errorCode: "e-001", message: "workplace must be selected"}
+  remember instance of DbContext () as dbContext
+  remember do dbContext.execPrepared(query: "select * from \"comments\" where \"workplaceId\" = $1;",
+                                     inputs: [workplaceId]) as commentSelector
+  remember [] as result
+  remember do Pg.read(iterator: commentSelector) as commentItem
+  loop until commentItem != EMPTY
+    do append(list: result, listItem: commentItem)
+    remember do Pg.read(iterator: commentSelector) as commentItem
+  do Pg.closeRead(iterator: commentSelector)
+  return {status: "success", message: "comments fetched successfully", comments: result}

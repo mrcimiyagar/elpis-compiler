@@ -1,0 +1,123 @@
+
+define function named checkDatabaseExistence
+  remember do Pg.connect(username: dbUsername, password: dbPassword, dbName: "template1") as database
+  remember do Pg.query(database: database, query: "select count(*) as result
+                                                       from pg_database where
+                                                            datname = '" + dbName + "';") as dbChecker
+  remember do Pg.read(iterator: dbChecker) as dbCount
+  if dbCount.result != "0" then
+    do print(text: "Database already exists so skipping database creation process.")
+  else
+    do print(text: "creating database...")
+    remember do Pg.query(database: database, query: "create database " + dbName + ";") as dbCreator
+    do Pg.closeRead(iterator: dbCreator)
+  do Pg.closeRead(iterator: dbChecker)
+  do Pg.disconnect(database: database)
+  remember instance of DbContext () as dbContext
+  remember do dbContext.exec(query: "create table if not exists registrations (
+                                registrationId bigserial primary key,
+                                phone varchar(20),
+                                vCode varchar(8)
+                            );") as tableCreation
+  do Pg.close(iterator: tableCreation)
+  remember do dbContext.exec(query: "create table if not exists \"users\" (
+                                \"userId\" bigserial primary key,
+                                \"firstName\" varchar(50),
+                                \"lastName\" varchar(50),
+                                \"username\" varchar(50),
+                                \"password\" varchar(50),
+                                \"phone\" varchar(20),
+                                \"role\" varchar(20)
+                            );") as tableCreation
+  do Pg.close(iterator: tableCreation)
+  remember do dbContext.exec(query: "create table if not exists \"sessions\" (
+                                  \"sessionId\" bigserial primary key,
+                                  \"userId\" bigint,
+                                  \"token\" varchar(64)
+                              );") as tableCreation
+  do Pg.close(iterator: tableCreation)
+  remember do dbContext.exec(query: "create table if not exists \"workplaces\" (
+                                  \"workplaceId\" bigserial primary key,
+                                  \"ownerId\" bigint,
+                                  \"title\" varchar(50),
+                                  \"address\" varchar(256),
+                                  \"phone\" varchar(20),
+                                  \"longitude\" bigint,
+                                  \"latitude\" bigint,
+                                  \"avatarId\" bigint
+                              );") as tableCreation
+  do Pg.close(iterator: tableCreation)
+  remember do dbContext.exec(query: "create table if not exists categories (
+                                  categoryId bigserial primary key,
+                                  title varchar(50),
+                                  description varchar(512)
+                              );") as tableCreation
+  do Pg.close(iterator: tableCreation)
+  remember do dbContext.exec(query: "create table if not exists services (
+                                  serviceId bigserial primary key,
+                                  title varchar(50),
+                                  description varchar(512),
+                                  categoryId bigint
+                              );") as tableCreation
+  do Pg.close(iterator: tableCreation)
+  remember do dbContext.exec(query: "create table if not exists workplace_services (
+                                  workplaceServiceId bigserial primary key,
+                                  workplaceId bigint,
+                                  serviceId bigint
+                              );") as tableCreation
+  do Pg.close(iterator: tableCreation)
+  remember do dbContext.exec(query: "create table if not exists events (
+                                  eventId bigserial primary key,
+                                  customerId bigint,
+                                  workplaceServiceId bigint
+                              );") as tableCreation
+  do Pg.close(iterator: tableCreation)
+  remember do dbContext.exec(query: "create table if not exists \"comments\" (
+                                  \"commentId\" bigserial primary key,
+                                  \"text\" varchar(512),
+                                  \"userId\" bigint,
+                                  \"workplaceId\" bigint,
+                                  \"dateTime\" bigint
+                              );") as tableCreation
+  do Pg.close(iterator: tableCreation)
+  remember do dbContext.exec(query: "create table if not exists photos (
+                                  photoId bigserial primary key,
+                                  workplaceId bigint
+                              );") as tableCreation
+  do Pg.close(iterator: tableCreation)
+  remember do dbContext.exec(query: "create table if not exists likes (
+                                  likeId bigserial primary key,
+                                  likerId bigint,
+                                  workplaceId bigint
+                              );") as tableCreation
+  do Pg.close(iterator: tableCreation)
+  remember do dbContext.exec(query: "create table if not exists rates (
+                                  rateId bigserial primary key,
+                                  raterId bigint,
+                                  workplaceId bigint
+                              );") as tableCreation
+  do Pg.close(iterator: tableCreation)
+
+define function named prepareAdmin
+  remember instance of DbContext () as dbContext
+  remember do dbContext.execPrepared(
+            query: "
+                select createUser($1, $2, $3, $4, $5, $6) as \"userId\";
+            ",
+            inputs: ["admin", "admin", "admin", "admin", "+980000000000", "admin"]
+  ) as userCreator
+  remember do Pg.read(iterator: userCreator) as user
+  do Pg.closeRead(iterator: userCreator)
+  if user.userId == "-1" then
+    do print(text: "admin token is : " + "admin")
+    do dbContext.close()
+    return 0
+  remember do makeRandomCode(length: 32) as token
+  remember do dbContext.execPrepared(
+        query: "insert into \"sessions\" (\"userId\", \"token\") values ($1, $2) returning \"sessionId\";",
+        inputs: [user.userId, "admin"]
+  ) as sessionCreator
+  remember do Pg.read(iterator: sessionCreator) as session
+  do Pg.closeRead(iterator: sessionCreator)
+  do print(text: "admin token is : " + "admin")
+  do dbContext.close()

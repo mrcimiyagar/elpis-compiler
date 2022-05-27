@@ -1,0 +1,150 @@
+
+
+histItem = ({
+              controlType: "div",
+              children: [
+                {
+                  controlType: "ListItem",
+                  children: [
+                    {
+                      controlType: "ListItemAvatar",
+                      children: [
+                        {
+                          controlType: "Avatar",
+                          children: [
+                            {
+                              controlType: "FolderIcon"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      controlType: "ListItemText",
+                      properties: {
+                        primary: "روز اول"
+                      },
+                      style: {
+                        width: 200,
+                        textAlign: "right",
+                        marginRight: 16,
+                        marginLeft: 16
+                      }
+                    }
+                  ]
+                },
+                {
+                  controlType: "Divider",
+                  properties: {
+                    component: "li"
+                  }
+                }
+              ]
+            })
+
+profilePage = (
+      {
+        controlType: "Box",
+        properties: {
+          id: "profileContainer",
+          fontPath: "/webapp/res/IranianSans.ttf",
+          fontName: "IranianSans"
+        },
+        style: {
+          width: "100%",
+          height: "100%",
+          direction: "rtl",
+          position: "absolute",
+          left: 0,
+          top: 0,
+          display: "none"
+        },
+        children: [
+          {
+            controlType: "AppBar",
+            properties: {
+              id: "profileAppBar",
+              animation: "${profileAppBarAnim}",
+              animationTime: "${profileAppBarAnimTime}",
+              hideOnScroll: true,
+              color: "#07d"
+            },
+            style: {
+              height: 256
+            },
+            children: [
+              {
+                controlType: "div",
+                style: {
+                  width: "100%"
+                },
+                children: [
+                  {
+                    controlType: "IconButton",
+                    style: {
+                      marginLeft: 16,
+                      marginTop: 16,
+                      marginRight: 16,
+                      position: "absolute",
+                      right: 0
+                    },
+                    children: [
+                      {
+                        controlType: "EditIcon",
+                        style: {
+                          fill: "#fff"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    controlType: "IconButton",
+                    properties: {
+                      onClick: "${() => page.hideProfile()}"
+                    },
+                    style: {
+                      marginLeft: 16,
+                      marginTop: 16,
+                      marginRight: 16,
+                      position: "absolute",
+                      left: 0
+                    },
+                    children: [
+                      {
+                        controlType: "CloseIcon",
+                        style: {
+                          fill: "#fff"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                controlType: "div",
+                style: {
+                  width: "100%",
+                  height: 100,
+                  marginTop: 64
+                },
+                children: [
+                  {
+                    controlType: "Avatar",
+                    properties: {
+                      elevation: 12,
+                      src: "/webapp/res/avatar.png"
+                    },
+                    style: {
+                      width: 84,
+                      height: 84,
+                      position: "absolute",
+                      left: "50%",
+                      transform: "translate(-50%, 0)"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      })

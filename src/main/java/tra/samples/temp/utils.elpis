@@ -1,0 +1,31 @@
+
+define function hasProperty with params obj, keys
+  index = 0
+  for len(obj: keys) times by step 1 do
+    if obj[keys[index]] == EMPTY then do
+      return false
+    index = index + 1
+  return true
+
+define function isBuiltOf with params str1, str2
+  if len(obj: str2) == 0 then do
+    return len(obj: str1) == 0
+  index1 = 0
+  for len(obj: str1) times by step 1 do
+    index2 = 0
+    found = 0
+    for len(obj: str2) times by step 1 do
+      if str1[index1] == str2[index2] then do
+        found = 1
+        exit loop
+      index2 = index2 + 1
+    if found != 1 then do
+      return false
+    index1 = index1 + 1
+  return true
+
+define function makeRandomCode with params length
+  result = ""
+  for length times by step 1 do
+    result = result + validUsernameSchema[random(max: len(obj: validUsernameSchema))]
+  return result

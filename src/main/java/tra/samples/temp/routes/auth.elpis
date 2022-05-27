@@ -1,0 +1,80 @@
+
+define function signup with params request
+  if hasProperty(obj: request.body, keys: ["username", "password", "firstName", "lastName", "phone"]) then do
+    username = request.body.username
+    password = request.body.password
+    fName = request.body.firstName
+    lName = request.body.lastName
+    phone = request.body.phone
+    if (len(obj: username) > 16) or (len(obj: username) == 0) then do
+      return {status: "error", errorCode: "e-102", message: "username empty or too long"}
+    if (len(obj: password) > 32) or (len(obj: password) == 0) then do
+      return {status: "error", errorCode: "e-102", message: "password empty or too long"}
+    if (len(obj: fName) > 64) or (len(obj: fName) == 0) then do
+      return {status: "error", errorCode: "e-102", message: "first name empty or too long"}
+    if (len(obj: lName) > 64) or (len(obj: lName) == 0) then do
+      return {status: "error", errorCode: "e-102", message: "last name empty or too long"}
+    if len(obj: phone) != 13 then do
+      return {status: "error", errorCode: "e-102", message: "wrong phone format"}
+    if not isBuiltOf(str1: username, str2: validUsernameSchema) then do
+      return {status: "error", errorCode: "e-103", message: "wrong letters in username"}
+    if not isBuiltOf(str1: fName, str2: validNameSchema) then do
+      return {status: "error", errorCode: "e-103", message: "wrong letters in first name"}
+    if not isBuiltOf(str1: lName, str2: validNameSchema) then do
+      return {status: "error", errorCode: "e-103", message: "wrong letters in last name"}
+    if not isBuiltOf(str1: phone, str2: validPhoneSchema) then do
+      return {status: "error", errorCode: "e-103", message: "wrong letters in phone"}
+    dbContext = instance of DbContext ()
+    userCreator = do dbContext.execPrepared(
+            query: "
+                  select createUser($1, $2, $3, $4, $5, $6) as \"userId\";
+              ",
+            inputs: [username, password, fName, lName, phone, "user"]
+        )
+    user = Pg.read(iterator: userCreator)
+    Pg.closeRead(iterator: userCreator)
+    if user.userId == "-1" then do
+      return {status: "error", errorCode: "e-105", message: "username already exists"}
+    token = makeRandomCode(length: 32)
+    sessionCreator = dbContext.execPrepared(
+            query: "insert into \"sessions\" (\"userId\", \"token\")" +
+              "values ($1, $2) returning \"sessionId\";",
+            inputs: [user.userId, token]
+        )
+    session = Pg.read(iterator: sessionCreator)
+    Pg.closeRead(iterator: sessionCreator)
+    return {status: "success", session: {sessionId: session.sessionId, token: token, userId: user.userId}, user: {userId: user.userId, firstName: fName, lastName: lName, username: username, phone: phone}}
+  else do
+    return {status: "error", errorCode: "e-101", message: "few arguments."}
+
+define function signin with params request
+  if hasProperty(obj: request.body, keys: ["username", "password"]) then do
+    username = request.body.username
+    password = request.body.password
+    if (len(obj: username) > 16) or (len(obj: username) == 0) then do
+      return {status: "error", errorCode: "e-102", message: "username empty or too long"}
+    if (len(obj: password) > 32) or (len(obj: password) == 0) then do
+      return {status: "error", errorCode: "e-102", message: "password empty or too long"}
+    if not isBuiltOf(str1: username, str2: validUsernameSchema) then do
+      return {status: "error", errorCode: "e-103", message: "wrong letters in username"}
+    dbContext = instance of DbContext ()
+    userSelector = do dbContext.execPrepared(
+            query: "select * from \"users\" where \"username\" = $1;",
+            inputs: [username]
+        )
+    result = Pg.read(iterator: userSelector)
+    Pg.closeRead(iterator: userSelector)
+    if result == EMPTY then do
+      return {status: "error", errorCode: "e-104", message: "username does not exist"}
+    if result.password != password then do
+      return {status: "error", errorCode: "e-105", message: "password is wrong"}
+    else do
+      sessionSelector = do dbContext.execPrepared(
+            query: "select * from \"sessions\" where \"userId\" = $1;",
+            inputs: [result.userId]
+        )
+      session = Pg.read(iterator: sessionSelector)
+      Pg.closeRead(iterator: sessionSelector)
+      return {status: "success", session: session}
+  else do
+    return {status: "error", errorCode: "e-101", message: "few arguments."}

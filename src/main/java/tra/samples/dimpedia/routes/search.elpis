@@ -1,0 +1,12 @@
+
+define function named search with params request
+  if request.body.query == EMPTY then
+    return {status: "error", errorCode: "e-001", message: "query can not be empty"}
+  remember instance of DbContext () as dbContext
+  remember do dbContext.execPrepared(query: "select * from \"workplaces\" where \"title\" like $1;", inputs: ["%" + request.body.query + "%"]) as searchResult
+  remember [] as result
+  remember do Pg.read(iterator: searchResult) as searchItem
+  loop until searchItem != EMPTY
+    do append(list: result, listItem: searchItem)
+    remember do Pg.read(iterator: searchResult) as searchItem
+  return {status: "success", workplaces: result, message: "workplaces fetched successfully."}

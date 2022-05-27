@@ -1,0 +1,339 @@
+package tra.v3;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
+import java_cup.runtime.Symbol;
+import tra.helpers.JsonHelper;
+import tra.models.*;
+import tra.models.temp.Path;
+import tra.models.temp.Point;
+import tra.models.temp.Rule;
+import tra.models.temp.Switch;
+
+import java.io.IOException;
+import java.lang.invoke.SwitchPoint;
+import java.util.*;
+
+public class TraParser2 {
+
+    private TraLexer lexer;
+    private Point root;
+    private Path path;
+
+    public static final String ANSI_RESET = "\u001B[0m";
+    public static final String ANSI_BLACK = "\u001B[30m";
+    public static final String ANSI_RED = "\u001B[31m";
+    public static final String ANSI_GREEN = "\u001B[32m";
+    public static final String ANSI_YELLOW = "\u001B[33m";
+    public static final String ANSI_BLUE = "\u001B[34m";
+    public static final String ANSI_PURPLE = "\u001B[35m";
+    public static final String ANSI_CYAN = "\u001B[36m";
+    public static final String ANSI_WHITE = "\u001B[37m";
+
+    public TraParser2(TraLexer lexer) {
+
+        this.lexer = lexer;
+
+        path = new Path();
+
+        root = new Point("root");
+        Point exp = new Point("exp");
+        Point id = new Point("id");
+        Point idExtra = new Point("idExtra");
+        Point idExtraDot = new Point("idExtraDot");
+        Point extra = new Point("extra");
+        Point epsilon = new Point("epsilon");
+        root.connections.add(new Rule(Collections.singletonList(exp),
+                new Action() {
+                    @Override
+                    public Object act(ArrayList<Object> args) {
+                        print(ANSI_CYAN + "Collecting root : exp" + ANSI_RESET);
+                        return args.get(0);
+                    }
+                }));
+        exp.connections.add(new Rule(Collections.singletonList(id),
+                new Action() {
+                    @Override
+                    public Object act(ArrayList<Object> args) {
+                        print(ANSI_CYAN + "Collecting exp : id" + ANSI_RESET);
+                        return args.get(0);
+                    }
+                }));
+        exp.connections.add(new Rule(Arrays.asList(exp, sym.terminalNames[sym.SUM], exp),
+                new Action() {
+                    @Override
+                    public Object act(ArrayList<Object> args) {
+                        print(ANSI_CYAN + "Collecting exp : exp sum exp" + ANSI_RESET);
+                        Codes.MathExpSum sum = new Codes.MathExpSum();
+                        sum.setValue1((Codes.Code)args.get(0));
+                        sum.setValue2((Codes.Code)args.get(1));
+                        return sum;
+                    }
+                }));
+        id.connections.add(new Rule(Arrays.asList(sym.terminalNames[sym.IDENTIFIER], idExtra),
+                new Action() {
+                    @Override
+                    public Object act(ArrayList<Object> args) {
+                        print(ANSI_CYAN + "Collecting id : id idExtra" + ANSI_RESET);
+                        Codes.Reference ref = new Codes.Reference();
+                        ref.setCurrentChain((Codes.Code) args.get(0));
+                        ref.setRestOfChains((Codes.Code) args.get(1));
+                        return ref;
+                    }
+                }));
+        idExtra.connections.add(new Rule(Arrays.asList(sym.terminalNames[sym.DOT], idExtraDot),
+                new Action() {
+                    @Override
+                    public Object act(ArrayList<Object> args) {
+                        print(ANSI_CYAN + "Collecting idExtra : dot idExtraDot" + ANSI_RESET);
+                        return args.get(0);
+                    }
+                }));
+        idExtra.connections.add(new Rule(Collections.singletonList(epsilon),
+                new Action() {
+                    @Override
+                    public Object act(ArrayList<Object> args) {
+                        print(ANSI_CYAN + "Collecting idExtra : epsilon" + ANSI_RESET);
+                        return null;
+                    }
+                }));
+        idExtraDot.connections.add(new Rule(Arrays.asList(sym.terminalNames[sym.IDENTIFIER], idExtra),
+                new Action() {
+                    @Override
+                    public Object act(ArrayList<Object> args) {
+                        print(ANSI_CYAN + "Collecting idExtraDot : id idExtra" + ANSI_RESET);
+                        Codes.Reference ref = new Codes.Reference();
+                        ref.setCurrentChain((Codes.Code) args.get(0));
+                        ref.setRestOfChains((Codes.Code) args.get(1));
+                        return ref;
+                    }
+                }));
+    }
+
+    public void parse() {
+        ArrayList<Symbol> tokenList = new ArrayList<>();
+        Symbol token;
+        try {
+            while ((token = this.lexer.next_token()).value != null) tokenList.add(token);
+            tokenList.add(new Symbol(sym.EOF, 0, 0, null));
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+        Switch switchPoint = new Switch();
+        switchPoint.point = root;
+        this.path.addSwitch(switchPoint);
+        this.parseCode(tokenList.toArray(new Symbol[0]));
+        print(compiled);
+        while (!path.pathStack.isEmpty()) {
+            Object result = path.pathStack.peek().first.currentRule().action.act(path.pathStack.peek().second);
+            path.pathStack.pop();
+            if (!path.pathStack.isEmpty())
+                path.pathStack.peek().second.add(result);
+            else {
+                String uglyJSONString = JsonHelper.toJson(result);
+                Gson gson = new GsonBuilder().setPrettyPrinting().create();
+                JsonParser jp = new JsonParser();
+                JsonElement je = jp.parse(uglyJSONString);
+                System.out.println(gson.toJson(je));
+            }
+        }
+    }
+
+    boolean done = false;
+
+    boolean isConnectedToEpsilon(Point point) {
+        for (Rule rule : point.connections) {
+            if (rule.sentence.size() == 1 && rule.sentence.get(0) instanceof Point) {
+                if (((Point) rule.sentence.get(0)).name.equals("epsilon"))
+                    return true;
+                else if (isConnectedToEpsilon((Point) rule.sentence.get(0))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void print(Object text) {
+        System.out.println(text);
+    }
+
+    boolean foundInConnections(String token, HashSet<String> blacklist, ArrayList<Rule> rules) {
+        for (Rule rule : rules) {
+            if (rule.sentence.get(0) instanceof String) {
+                if (rule.sentence.get(0).equals(token)) {
+                    return true;
+                }
+            }
+            else if (rule.sentence.get(0) instanceof Point) {
+                blacklist.add(((Point)rule.sentence.get(0)).name);
+                if (foundInConnections(token, blacklist, ((Point)rule.sentence.get(0)).connections)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    boolean matchedUpperRule(Symbol[] tokens, int pointer, Switch switchPoint) {
+        print("checking " + switchPoint.point.name + "... " + sym.terminalNames[tokens[pointer].sym]);
+        if (switchPoint.reachedRuleStorageEnd() || switchPoint.reachedRuleEnd()) {
+            for (int ruleCounter = 0; ruleCounter < switchPoint.point.connections.size(); ruleCounter++) {
+                if (switchPoint.point.connections.get(ruleCounter).sentence.get(0) instanceof Point &&
+                        ((Point) switchPoint.point.connections.get(ruleCounter).sentence.get(0)).name.equals(switchPoint.point.name) &&
+                        ((switchPoint.point.connections.get(ruleCounter).sentence.get(1) instanceof String &&
+                                switchPoint.point.connections.get(ruleCounter).sentence.get(1).equals(sym.terminalNames[tokens[pointer].sym])) ||
+                                ((switchPoint.point.connections.get(ruleCounter).sentence.get(1) instanceof Point &&
+                                        foundInConnections(sym.terminalNames[tokens[pointer].sym], new HashSet<>(),
+                                                ((Point) switchPoint.point.connections.get(ruleCounter)
+                                                        .sentence.get(1)).connections))))) {
+                    print("found upper rule match.");
+                    Switch sp = new Switch();
+                    sp.point = switchPoint.point;
+                    sp.currentRuleIndex = ruleCounter;
+                    sp.currentRuleTokenIndex = 1;
+                    sp.startedAt = pointer;
+                    path.addSwitch(sp);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean investigateLoop(HashSet<String> blacklist, String firstToken, Point node) {
+        for (Rule subNodesAction : node.connections) {
+            Object obj = subNodesAction.sentence.get(0);
+            if (obj instanceof Point) {
+                if (blacklist.contains(((Point) obj).name)) continue;
+                else blacklist.add(((Point) obj).name);
+                if (investigateLoop(blacklist, firstToken, (Point) obj)) {
+                    return true;
+                }
+            } else if (obj instanceof String) {
+                if (firstToken.equals(obj)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    Pair<Boolean, Boolean> handleRuleEnd(Symbol[] tokens, int pointer, Switch switchPoint) {
+        boolean hasPassedExtraTests = false;
+        while (switchPoint.reachedRuleStorageEnd() || switchPoint.reachedRuleEnd()) {
+            hasPassedExtraTests = true;
+            if (matchedUpperRule(tokens, pointer, switchPoint)) return new Pair<>(hasPassedExtraTests, true);
+            if (switchPoint.reachedRuleStorageEnd()) {
+                Pair<Switch, ArrayList<Object>> prev = path.pathStack.pop();
+                print("getting back from " + prev.first.point.name + " to " + path.pathStack.peek().first.point.name);
+                switchPoint = path.pathStack.peek().first;
+                Object result = prev.first.currentRule().action.act(prev.second);
+                path.pathStack.peek().second.add(result);
+            }
+            if (matchedUpperRule(tokens, pointer, switchPoint)) return new Pair<>(hasPassedExtraTests, true);
+            if (switchPoint.reachedRuleEnd()) {
+                Pair<Switch, ArrayList<Object>> prev = path.pathStack.pop();
+                print("getting back from " + prev.first.point.name + " to " + path.pathStack.peek().first.point.name);
+                switchPoint = path.pathStack.peek().first;
+                switchPoint.currentRuleTokenIndex++;
+                if (switchPoint.reachedRuleEnd()) {
+                    if (!compiled) {
+                        switchPoint.currentRuleTokenIndex = 0;
+                        switchPoint.currentRuleIndex++;
+                        switchPoint = path.pathStack.peek().first;
+                        print("switched rule of " + switchPoint.point.name + " from " + (switchPoint.currentRuleIndex - 1) + " to " + switchPoint.currentRuleIndex);
+                        path.pathStack.peek().second.clear();
+                    }
+                }
+                Object result = prev.first.currentRule().action.act(prev.second);
+                path.pathStack.peek().second.add(result);
+            }
+            if (matchedUpperRule(tokens, pointer, switchPoint)) return new Pair<>(hasPassedExtraTests, true);
+        }
+        return new Pair<>(hasPassedExtraTests, false);
+    }
+
+    boolean compiled = false;
+
+    private void reduceToEnd() {
+
+    }
+
+    private boolean parseCode(Symbol[] tokens) {
+        int pointer = 0;
+        int counter = 0;
+        while (counter < 100) {
+            print(path.pathStack.size());
+            Switch switchPoint = path.pathStack.peek().first;
+            if (tokens[pointer].sym == sym.EOF) {
+                print("EOF seen.");
+                if (switchPoint.currentRuleTokenIndex < switchPoint.currentRule().sentence.size()) {
+                    if (switchPoint.currentRuleToken() instanceof Point &&
+                            isConnectedToEpsilon((Point) switchPoint.currentRuleToken())) {
+                        compiled = true;
+                        path.pathStack.peek().second.add(null);
+                        reduceToEnd();
+                        return true;
+                    } else {
+                        return false;
+                    }
+                } else {
+                    return true;
+                }
+            }
+            switchPoint = path.pathStack.peek().first;
+            print("using " + switchPoint.point.name);
+            Object ruleToken = switchPoint.currentRuleToken();
+            if (ruleToken instanceof String) {
+                print("comparing " + ruleToken + " " + sym.terminalNames[tokens[pointer].sym]);
+                if (ruleToken.equals(sym.terminalNames[tokens[pointer].sym])) {
+                    print("matched.");
+                    if (tokens[pointer].sym == sym.IDENTIFIER) {
+                        Codes.Identifier id = new Codes.Identifier();
+                        id.setName((String) tokens[pointer].value);
+                        path.pathStack.peek().second.add(id);
+                        print("found identifier");
+                    }
+                    else if (tokens[pointer].sym == sym.NUMBER ||
+                            tokens[pointer].sym == sym.STRING ||
+                            tokens[pointer].sym == sym.TRUE ||
+                            tokens[pointer].sym == sym.FALSE) {
+                        Codes.Value value = new Codes.Value();
+                        value.setValue(tokens[pointer].value);
+                        path.pathStack.peek().second.add(value);
+                        print("found value");
+                    }
+                    pointer++;
+                    switchPoint.currentRuleTokenIndex++;
+                    handleRuleEnd(tokens, pointer, switchPoint);
+                } else {
+                    print("not matched.");
+                    pointer = switchPoint.startedAt;
+                    switchPoint.currentRuleTokenIndex = 0;
+                    switchPoint.currentRuleIndex++;
+                    print("switched rule of " + switchPoint.point.name + " from " + (switchPoint.currentRuleIndex - 1) + " to " + switchPoint.currentRuleIndex);
+                }
+            } else if (ruleToken instanceof Point) {
+                HashSet<String> blacklist = new HashSet<>();
+                if (investigateLoop(blacklist, sym.terminalNames[tokens[pointer].sym], (Point) ruleToken)
+                        && isConnectedToEpsilon(switchPoint.point)) {
+                    Point prev = path.pathStack.pop().first.point;
+                    print("getting back from " + prev.name + " to " + path.pathStack.peek().first.point.name);
+                    switchPoint = path.pathStack.peek().first;
+                    switchPoint.currentRuleTokenIndex++;
+                    handleRuleEnd(tokens, pointer, switchPoint);
+                }
+                print("opening " + ((Point) ruleToken).name);
+                Switch sp = new Switch();
+                sp.point = (Point) ruleToken;
+                sp.startedAt = pointer;
+                path.addSwitch(sp);
+            }
+            counter++;
+        }
+        return false;
+    }
+}

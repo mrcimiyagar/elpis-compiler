@@ -1,0 +1,6 @@
+dbUsername = "postgres"
+dbPassword = "3g5h165tsK65j1s564L69ka5R168kk37sut5ls3Sk2t"
+dbName = "dimpedia_test"
+validUsernameSchema = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+validNameSchema = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_ "
+validPhoneSchema = "+0123456789 "

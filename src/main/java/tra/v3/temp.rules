@@ -1,0 +1,688 @@
+Node rootNode = new Node("rootNode");
+        mainNode.next(Collections.singletonList(rootNode),
+                prevResults -> {
+                    List<Codes.Code> codes = (List<Codes.Code>) prevResults.get(0).second;
+                    String uglyJSONString = JsonHelper.toJson(codes);
+                    Gson gson = new GsonBuilder().setPrettyPrinting().create();
+                    JsonParser jp = new JsonParser();
+                    JsonElement je = jp.parse(uglyJSONString);
+                    System.out.println(gson.toJson(je));
+                    return convertCodeToBytes(codes);
+                });
+        rootNode.next(Collections.singletonList(sym.terminalNames[sym.EMPTY]),
+                prevResults -> new ArrayList<Codes.Code>());
+        rootNode.next(Arrays.asList(sym.terminalNames[sym.USE], sym.terminalNames[sym.STRING], rootNode),
+                prevResults -> {
+                    dependencies.add(0, (String) ((Codes.Value)prevResults.get(0).second).getValue());
+                    return prevResults.get(1).second;
+                });
+        Node expNode = new Node("expNode");
+        expNode.next(Collections.singletonList(sym.terminalNames[sym.EMPTY]),
+                prevResults -> {
+                    return new Codes.Empty();
+                });
+        expNode.next(Collections.singletonList(sym.terminalNames[sym.TRUE]),
+                prevResults -> {
+                    Codes.Value value = new Codes.Value();
+                    value.setValue(true);
+                    return value;
+                });
+        expNode.next(Collections.singletonList(sym.terminalNames[sym.FALSE]),
+                prevResults -> {
+                    Codes.Value value = new Codes.Value();
+                    value.setValue(false);
+                    return value;
+                });
+        expNode.next(Collections.singletonList(sym.terminalNames[sym.NUMBER]),
+                prevResults -> prevResults.get(0).second);
+        expNode.next(Collections.singletonList(sym.terminalNames[sym.STRING]),
+                prevResults -> prevResults.get(0).second);
+        Node inputsNode = new Node("inputsNode");
+        expNode.next(Arrays.asList(sym.terminalNames[sym.NOT], expNode),
+                new Action() {
+                    @Override
+                    public Object act(List<Pair<Symbol, Object>> prevResults) {
+                        Codes.MathExpNot mathExpNot = new Codes.MathExpNot();
+                        mathExpNot.setValue((Codes.Code)prevResults.get(0).second);
+                        return mathExpNot;
+                    }
+                });
+        expNode.next(Arrays.asList(sym.terminalNames[sym.LBRACE], inputsNode, sym.terminalNames[sym.RBRACE]),
+                prevResults -> {
+                    Codes.AnonymousObject ao = new Codes.AnonymousObject();
+                    ao.setContent((Hashtable<String, Codes.Code>) prevResults.get(0).second);
+                    return ao;
+                });
+        Node refExtraNode = new Node("refExtraNode");
+        expNode.next(Arrays.asList(sym.terminalNames[sym.IDENTIFIER], refExtraNode),
+                prevResults -> {
+                    if (prevResults.get(1).second == null || prevResults.get(1).second instanceof Codes.Reference) {
+                        Codes.Reference ref = new Codes.Reference();
+                        ref.setCurrentChain((Codes.Identifier) prevResults.get(0).second);
+                        ref.setRestOfChains((Codes.Code) prevResults.get(1).second);
+                        return ref;
+                    } else if (prevResults.get(1).second instanceof Codes.Call) {
+                        Codes.Call call = (Codes.Call) prevResults.get(1).second;
+                        call.setFuncReference((Codes.Identifier) prevResults.get(0).second);
+                        return call;
+                    } else {
+                        Codes.Index index = (Codes.Index) prevResults.get(1).second;
+                        index.setVar((Codes.Identifier) prevResults.get(0).second);
+                        return index;
+                    }
+                });
+        Node expChainNode = new Node("expChainNode");
+        refExtraNode.next(Arrays.asList(sym.terminalNames[sym.LBRACKET], expChainNode, sym.terminalNames[sym.RBRACKET], refExtraNode),
+                prevResults -> {
+                    Codes.Index index = new Codes.Index();
+                    index.setIndex((List<Codes.Code>)prevResults.get(0).second);
+                    index.setRestOfChains((Codes.Code)prevResults.get(1).second);
+                    return index;
+                });
+        refExtraNode.next(Arrays.asList(sym.terminalNames[sym.LPAREN], inputsNode, sym.terminalNames[sym.RPAREN]),
+                prevResults -> {
+                    Codes.Call call = new Codes.Call();
+                    call.setEntries((Hashtable<String, Codes.Code>) prevResults.get(0).second);
+                    return call;
+                });
+        expNode.next(Arrays.asList(sym.terminalNames[sym.LPAREN], expNode, sym.terminalNames[sym.RPAREN]),
+                prevResults -> prevResults.get(0).second);
+        expNode.next(Arrays.asList(sym.terminalNames[sym.LBRACKET], expChainNode, sym.terminalNames[sym.RBRACKET]),
+                prevResults -> {
+                    Codes.Array array = new Codes.Array();
+                    array.setItems((List<Codes.Code>)prevResults.get(0).second);
+                    return array;
+                });
+        Node expChainExtraNode = new Node("expChainExtraNode");
+        Node periodNode = new Node("periodNode");
+        expChainNode.next(Arrays.asList(expNode, periodNode, expChainExtraNode),
+                prevResults -> {
+                    List<Codes.Code> ids = (List<Codes.Code>) prevResults.get(2).second;
+                    if (prevResults.get(1).second != null) {
+                        Codes.Period period = new Codes.Period();
+                        period.setStart((Codes.Code) prevResults.get(0).second);
+                        period.setEnd((Codes.Code)prevResults.get(1).second);
+                        ids.add(0, period);
+                    } else {
+                        Codes.Code exp = (Codes.Code) prevResults.get(0).second;
+                        ids.add(0, exp);
+                    }
+                    return ids;
+                });
+        periodNode.next(Arrays.asList(sym.terminalNames[sym.COLON], expNode),
+                prevResults -> prevResults.get(0).second);
+        periodNode.next(Collections.singletonList(epsilon),
+                prevResults -> null);
+        expChainNode.next(Collections.singletonList(epsilon),
+                prevResults -> new ArrayList<>());
+        expChainExtraNode.next(Arrays.asList(sym.terminalNames[sym.COMMA], expNode, expChainExtraNode),
+                prevResults -> {
+                    List<Codes.Code> ids = (List<Codes.Code>) prevResults.get(1).second;
+                    Codes.Code exp = (Codes.Code) prevResults.get(0).second;
+                    ids.add(0, exp);
+                    return ids;
+                });
+        expChainExtraNode.next(Collections.singletonList(epsilon),
+                prevResults -> new ArrayList<>());
+        Node refNode = new Node("refNode");
+        expNode.next(Arrays.asList(sym.terminalNames[sym.INSTANCE], sym.terminalNames[sym.OF],
+                refNode, sym.terminalNames[sym.LPAREN], inputsNode, sym.terminalNames[sym.RPAREN]),
+                prevResults -> {
+                    Pair<Symbol, Object> classRef = prevResults.get(0);
+                    Pair<Symbol, Object> entries = prevResults.get(1);
+                    Codes.Instantiate instantiate = new Codes.Instantiate();
+                    instantiate.setClassReference((Codes.Reference)classRef.second);
+                    instantiate.setEntries((Hashtable<String, Codes.Code>)entries.second);
+                    return instantiate;
+                });
+        Node secondParamNode = new Node("secondParamNode");
+        secondParamNode.next(Collections.singletonList(sym.terminalNames[sym.EMPTY]),
+                prevResults -> {
+                    return new Codes.Empty();
+                });
+        secondParamNode.next(Collections.singletonList(sym.terminalNames[sym.TRUE]),
+                prevResults -> {
+                    Codes.Value value = new Codes.Value();
+                    value.setValue(true);
+                    return value;
+                });
+        secondParamNode.next(Collections.singletonList(sym.terminalNames[sym.FALSE]),
+                prevResults -> {
+                    Codes.Value value = new Codes.Value();
+                    value.setValue(false);
+                    return value;
+                });
+        secondParamNode.next(Collections.singletonList(sym.terminalNames[sym.NUMBER]),
+                prevResults -> prevResults.get(0).second);
+        secondParamNode.next(Collections.singletonList(sym.terminalNames[sym.STRING]),
+                prevResults -> prevResults.get(0).second);
+        secondParamNode.next(Arrays.asList(sym.terminalNames[sym.IDENTIFIER], refExtraNode),
+                prevResults -> {
+                    if (prevResults.get(1).second == null || prevResults.get(1).second instanceof Codes.Reference) {
+                        Codes.Reference ref = new Codes.Reference();
+                        ref.setCurrentChain((Codes.Identifier) prevResults.get(0).second);
+                        ref.setRestOfChains((Codes.Code) prevResults.get(1).second);
+                        return ref;
+                    } else {
+                        Codes.Index index = (Codes.Index) prevResults.get(1).second;
+                        index.setVar((Codes.Identifier) prevResults.get(0).second);
+                        return index;
+                    }
+                });
+        secondParamNode.next(Arrays.asList(sym.terminalNames[sym.LPAREN], expNode, sym.terminalNames[sym.RPAREN]),
+                prevResults -> prevResults.get(0).second);
+        secondParamNode.next(Arrays.asList(sym.terminalNames[sym.DO], refNode,
+                sym.terminalNames[sym.LPAREN], inputsNode, sym.terminalNames[sym.RPAREN]),
+                prevResults -> {
+                    Codes.Call call = new Codes.Call();
+                    call.setEntries((Hashtable<String, Codes.Code>) prevResults.get(1).second);
+                    call.setFuncReference((Codes.Reference)prevResults.get(0).second);
+                    return call;
+                });
+        secondParamNode.next(Arrays.asList(expNode, sym.terminalNames[sym.IS], sym.terminalNames[sym.NOT],
+                sym.terminalNames[sym.SATISFIED]),
+                prevResults -> {
+                    Codes.MathExpNot sum = new Codes.MathExpNot();
+                    sum.setValue((Codes.Code)prevResults.get(0).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.IS], sym.terminalNames[sym.NOT],
+                sym.terminalNames[sym.SATISFIED]),
+                prevResults -> {
+                    Codes.MathExpNot sum = new Codes.MathExpNot();
+                    sum.setValue((Codes.Code)prevResults.get(0).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.SUM], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpSum sum = new Codes.MathExpSum();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.SUBTRACT], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpSubstract sum = new Codes.MathExpSubstract();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.MULTIPLY], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpMultiply sum = new Codes.MathExpMultiply();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.DIVISION], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpDivide sum = new Codes.MathExpDivide();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.AND], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpAnd sum = new Codes.MathExpAnd();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.OR], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpOr sum = new Codes.MathExpOr();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.POWER], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpPower sum = new Codes.MathExpPower();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.MOD], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpMod sum = new Codes.MathExpMod();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.EQUAL], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpEqual sum = new Codes.MathExpEqual();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.LT], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpLT sum = new Codes.MathExpLT();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.LE], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpLE sum = new Codes.MathExpLE();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.GE], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpGE sum = new Codes.MathExpGE();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.GT], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpGT sum = new Codes.MathExpGT();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+        expNode.next(Arrays.asList(expNode, sym.terminalNames[sym.NE], secondParamNode),
+                prevResults -> {
+                    Codes.MathExpNE sum = new Codes.MathExpNE();
+                    sum.setValue1((Codes.Code)prevResults.get(0).second);
+                    sum.setValue2((Codes.Code)prevResults.get(1).second);
+                    return sum;
+                });
+
+        Node ifNode = new Node("ifNode");
+        Node elseIfNode = new Node("elseIf");
+        Node elseIfElseNode = new Node("elseIfElse");
+        rootNode.next(Arrays.asList(sym.terminalNames[sym.IF], ifNode, rootNode),
+                prevResults -> {
+                    Codes.Code newLine = (Codes.Code) prevResults.get(0).second;
+                    List<Codes.Code> codes = (List<Codes.Code>) prevResults.get(1).second;
+                    codes.add(0, newLine);
+                    return codes;
+                });
+        ifNode.next(Arrays.asList(expNode, sym.terminalNames[sym.THEN],
+                sym.terminalNames[sym.START], rootNode, sym.terminalNames[sym.END], elseIfNode),
+                prevResults -> {
+                    Pair<Symbol, Object> condition = prevResults.get(0);
+                    Pair<Symbol, Object> body = prevResults.get(1);
+                    Pair<Symbol, Object> extras = prevResults.get(2);
+                    Codes.If ifCode = new Codes.If();
+                    ifCode.setCondition((Codes.Code)condition.second);
+                    ifCode.setCodes((List<Codes.Code>)body.second);
+                    ifCode.setExtras((List<Codes.Code>)extras.second);
+                    return ifCode;
+                });
+        elseIfNode.next(Arrays.asList(sym.terminalNames[sym.ELSE], elseIfElseNode),
+                prevResults -> prevResults.get(0).second);
+        elseIfElseNode.next(Arrays.asList(sym.terminalNames[sym.IF], expNode, sym.terminalNames[sym.THEN],
+                sym.terminalNames[sym.START], rootNode, sym.terminalNames[sym.END], elseIfNode),
+                prevResults -> {
+                    Codes.Code condition = (Codes.Code) prevResults.get(0).second;
+                    List<Codes.Code> elseIfCodes = (List<Codes.Code>)prevResults.get(1).second;
+                    List<Codes.Code> otherElses = (List<Codes.Code>)prevResults.get(2).second;
+                    Codes.ElseIf elseIf = new Codes.ElseIf();
+                    elseIf.setCondition(condition);
+                    elseIf.setCodes(elseIfCodes);
+                    otherElses.add(0, elseIf);
+                    return otherElses;
+                });
+        elseIfElseNode.next(Arrays.asList(sym.terminalNames[sym.START],
+                rootNode, sym.terminalNames[sym.END]),
+                prevResults -> {
+                    Pair<Symbol, Object> body = prevResults.get(0);
+                    Codes.Else elseCode = new Codes.Else();
+                    elseCode.setCodes((List<Codes.Code>)body.second);
+                    return new ArrayList<Codes.Code>(Collections.singletonList(elseCode));
+                });
+        elseIfNode.next(Collections.singletonList(epsilon),
+                prevResults -> new ArrayList<Codes.Code>());
+        Node loopNode = new Node("loopNode");
+        rootNode.next(Arrays.asList(sym.terminalNames[sym.LOOP], loopNode, rootNode),
+                prevResults -> {
+                    Codes.Code newLine = (Codes.Code) prevResults.get(0).second;
+                    List<Codes.Code> codes = (List<Codes.Code>) prevResults.get(1).second;
+                    codes.add(0, newLine);
+                    return codes;
+                });
+        Node forLoop = new Node("forNode");
+        loopNode.next(Arrays.asList(sym.terminalNames[sym.FOR], forLoop),
+                prevResults -> prevResults.get(0).second);
+        Node stepNode = new Node("stepNode");
+        stepNode.next(Arrays.asList(sym.terminalNames[sym.BY], sym.terminalNames[sym.STEP], expNode),
+                prevResults -> prevResults.get(0).second);
+        stepNode.next(Collections.singletonList(epsilon),
+                prevResults -> null);
+        forLoop.next(Arrays.asList(expNode, sym.terminalNames[sym.TIMES], stepNode, sym.terminalNames[sym.START],
+                rootNode, sym.terminalNames[sym.END]),
+                prevResults -> {
+                    Pair<Symbol, Object> exp = prevResults.get(0);
+                    Pair<Symbol, Object> step = prevResults.get(1);
+                    Pair<Symbol, Object> body = prevResults.get(2);
+                    Codes.CounterFor forCode = new Codes.CounterFor();
+                    forCode.setLimit((Codes.Code)exp.second);
+                    forCode.setCodes((List<Codes.Code>)body.second);
+                    forCode.setStep((Codes.Code)step.second);
+                    return forCode;
+                });
+        Node whileLoop = new Node("whileNode");
+        loopNode.next(Arrays.asList(sym.terminalNames[sym.UNTIL], whileLoop),
+                prevResults -> prevResults.get(0).second);
+        whileLoop.next(Arrays.asList(expNode, sym.terminalNames[sym.START], rootNode,
+                sym.terminalNames[sym.END]),
+                prevResults -> {
+                    Pair<Symbol, Object> exp = prevResults.get(0);
+                    Pair<Symbol, Object> body = prevResults.get(1);
+                    Codes.While whileCode = new Codes.While();
+                    whileCode.setCondition((Codes.Code)exp.second);
+                    whileCode.setCodes((List<Codes.Code>)body.second);
+                    return whileCode;
+                });
+        Node foreachNode = new Node("foreachNode");
+        loopNode.next(Arrays.asList(sym.terminalNames[sym.OVER], expNode, sym.terminalNames[sym.USING],
+                sym.terminalNames[sym.IDENTIFIER], sym.terminalNames[sym.AS], sym.terminalNames[sym.BOWL],
+                sym.terminalNames[sym.START], rootNode, sym.terminalNames[sym.END]),
+                new Action() {
+                    @Override
+                    public Object act(List<Pair<Symbol, Object>> prevResults) {
+                        Codes.Code list = (Codes.Code) prevResults.get(0).second;
+                        Codes.Identifier bowl = (Codes.Identifier) prevResults.get(1).second;
+                        List<Codes.Code> body = (List<Codes.Code>) prevResults.get(2).second;
+                        Codes.Foreach foreachCode = new Codes.Foreach();
+                        foreachCode.setCollection(list);
+                        foreachCode.setTemp(bowl);
+                        foreachCode.setCodes(body);
+                        return foreachCode;
+                    }
+                });
+        Node rememberNode = new Node("remNode");
+        rootNode.next(Arrays.asList(sym.terminalNames[sym.REMEMBER], rememberNode, rootNode),
+                prevResults -> {
+                    Codes.Code newLine = (Codes.Code) prevResults.get(0).second;
+                    List<Codes.Code> codes = (List<Codes.Code>) prevResults.get(1).second;
+                    codes.add(0, newLine);
+                    return codes;
+                });
+        rememberNode.next(Arrays.asList(expNode, sym.terminalNames[sym.AS], refNode),
+                prevResults -> {
+                    Pair<Symbol, Object> exp = prevResults.get(0);
+                    Pair<Symbol, Object> id = prevResults.get(1);
+                    Codes.Assignment assignment = new Codes.Assignment();
+                    assignment.setValue((Codes.Code)exp.second);
+                    assignment.setVar((Codes.Reference)id.second);
+                    return assignment;
+                });
+        Node functionNode = new Node("funcNode");
+        Node funcLevelNode = new Node("funcLevelNode");
+        rootNode.next(Arrays.asList(sym.terminalNames[sym.DEFINE], sym.terminalNames[sym.FUNCTION], funcLevelNode, functionNode, rootNode),
+                prevResults -> {
+                    Pair<Symbol, Object> funcLevel = prevResults.get(0);
+                    Codes.Function newLine = (Codes.Function) prevResults.get(1).second;
+                    List<Codes.Code> codes = (List<Codes.Code>) prevResults.get(2).second;
+                    newLine.setLevel(((Codes.DataLevel)funcLevel.second));
+                    codes.add(0, newLine);
+                    return codes;
+                });
+        Node funcLevelNameNode = new Node("funcLevelNameNode");
+        funcLevelNode.next(Arrays.asList(sym.terminalNames[sym.OF], funcLevelNameNode),
+                prevResults -> prevResults.get(0).second);
+        funcLevelNode.next(Collections.singletonList(epsilon),
+                prevResults -> Codes.DataLevel.InstanceLevel);
+        funcLevelNameNode.next(Collections.singletonList(sym.terminalNames[sym.CLASS]),
+                prevResults -> Codes.DataLevel.ClassLevel);
+        funcLevelNameNode.next(Collections.singletonList(sym.terminalNames[sym.INSTANCE]),
+                prevResults -> Codes.DataLevel.InstanceLevel);
+        Node funcParams = new Node("funcParams");
+        Node funcParamsList = new Node("funcParamsList");
+        funcParams.next(Arrays.asList(sym.terminalNames[sym.WITH], sym.terminalNames[sym.PARAMS],
+                sym.terminalNames[sym.IDENTIFIER], funcParamsList),
+                prevResults -> {
+                    Pair<Symbol, Object> identifier = prevResults.get(0);
+                    Pair<Symbol, Object> identifierList = prevResults.get(1);
+                    List<Codes.Identifier> idList = (List<Codes.Identifier>) identifierList.second;
+                    idList.add((Codes.Identifier) identifier.second);
+                    return idList;
+                });
+        funcParams.next(Collections.singletonList(epsilon),
+                prevResults -> new ArrayList<Codes.Identifier>());
+        funcParamsList.next(Arrays.asList(sym.terminalNames[sym.COMMA], sym.terminalNames[sym.IDENTIFIER], funcParamsList),
+                prevResults -> {
+                    Pair<Symbol, Object> identifier = prevResults.get(0);
+                    Pair<Symbol, Object> identifierList = prevResults.get(1);
+                    List<Codes.Identifier> idList = (List<Codes.Identifier>) identifierList.second;
+                    idList.add((Codes.Identifier) identifier.second);
+                    return idList;
+                });
+        funcParamsList.next(Collections.singletonList(epsilon),
+                prevResults -> new ArrayList<Codes.Identifier>());
+        functionNode.next(Arrays.asList(sym.terminalNames[sym.NAMED], sym.terminalNames[sym.IDENTIFIER],
+                funcParams, sym.terminalNames[sym.START], rootNode, sym.terminalNames[sym.END]),
+                prevResults -> {
+                    Pair<Symbol, Object> funcName = prevResults.get(0);
+                    Pair<Symbol, Object> funcParams1 = prevResults.get(1);
+                    Pair<Symbol, Object> funcCodes = prevResults.get(2);
+                    Codes.Function func = new Codes.Function();
+                    func.setName(((Codes.Identifier)funcName.second).getName());
+                    func.setParams((List<Codes.Identifier>) funcParams1.second);
+                    func.setCodes((List<Codes.Code>)funcCodes.second);
+                    return func;
+                });
+        Node inputsExtraNode = new Node("inputsExtraNode");
+        inputsNode.next(Arrays.asList(sym.terminalNames[sym.IDENTIFIER], sym.terminalNames[sym.COLON],
+                expNode, inputsExtraNode),
+                prevResults -> {
+                    Hashtable<String, Codes.Code> ids = (Hashtable<String, Codes.Code>) prevResults.get(2).second;
+                    Codes.Code exp = (Codes.Code) prevResults.get(1).second;
+                    String inputName = ((Codes.Identifier) prevResults.get(0).second).getName();
+                    ids.put(inputName, exp);
+                    return ids;
+                });
+        inputsNode.next(Collections.singletonList(epsilon),
+                prevResults -> new Hashtable<>());
+        inputsExtraNode.next(Arrays.asList(sym.terminalNames[sym.COMMA], sym.terminalNames[sym.IDENTIFIER],
+                sym.terminalNames[sym.COLON], expNode, inputsExtraNode),
+                prevResults -> {
+                    Hashtable<String, Codes.Code> ids = (Hashtable<String, Codes.Code>) prevResults.get(2).second;
+                    Codes.Code exp = (Codes.Code) prevResults.get(1).second;
+                    String inputName = ((Codes.Identifier) prevResults.get(0).second).getName();
+                    ids.put(inputName, exp);
+                    return ids;
+                });
+        inputsExtraNode.next(Collections.singletonList(epsilon),
+                prevResults -> new Hashtable<>());
+        refNode.next(Arrays.asList(sym.terminalNames[sym.IDENTIFIER], refExtraNode),
+                prevResults -> {
+                    Codes.Reference ref = new Codes.Reference();
+                    ref.setCurrentChain((Codes.Identifier) prevResults.get(0).second);
+                    ref.setRestOfChains((Codes.Reference)prevResults.get(1).second);
+                    return ref;
+                });
+        refExtraNode.next(Arrays.asList(sym.terminalNames[sym.DOT], sym.terminalNames[sym.IDENTIFIER], refExtraNode),
+                prevResults -> {
+                    Codes.Code lastRef = prevResults.get(1).second != null ? ((Codes.Code) prevResults.get(1).second) : null;
+                    Codes.Identifier id = (Codes.Identifier) prevResults.get(0).second;
+                    Codes.Reference newRef = new Codes.Reference();
+                    newRef.setCurrentChain(id);
+                    newRef.setRestOfChains(lastRef);
+                    return newRef;
+                });
+        refExtraNode.next(Collections.singletonList(epsilon),
+                prevResults -> null);
+        rootNode.next(Arrays.asList(refNode,
+                sym.terminalNames[sym.LPAREN], inputsNode, sym.terminalNames[sym.RPAREN], rootNode),
+                prevResults -> {
+                    Codes.Call call = new Codes.Call();
+                    call.setFuncReference((Codes.Reference)prevResults.get(0).second);
+                    call.setEntries((Hashtable<String, Codes.Code>) prevResults.get(1).second);
+                    List<Codes.Code> restOfCode = (List<Codes.Code>) prevResults.get(2).second;
+                    restOfCode.add(0, call);
+                    return restOfCode;
+                });
+        Node inheritanceNode = new Node("inheritanceNode");
+        Node inheritanceExtraNode = new Node("inheritanceExtraNode");
+        Node behaviorNode = new Node("behaviorNode");
+        Node behaviorExtraNode = new Node("behaviorExtraNode");
+        Node classContentNode = new Node("classContentNode");
+        rootNode.next(Arrays.asList(sym.terminalNames[sym.DEFINE], sym.terminalNames[sym.CLASS], sym.terminalNames[sym.IDENTIFIER],
+                inheritanceNode, behaviorNode, sym.terminalNames[sym.START], classContentNode, sym.terminalNames[sym.END], rootNode),
+                prevResults -> {
+                    Codes.Identifier classId = (Codes.Identifier) prevResults.get(0).second;
+                    List<Codes.Identifier> inheritanceIds = (List<Codes.Identifier>) prevResults.get(1).second;
+                    List<Codes.Identifier> behaviorIds = (List<Codes.Identifier>) prevResults.get(2).second;
+                    Triple<List<Codes.Prop>, List<Codes.Function>, Codes.Constructor> body
+                            = (Triple<List<Codes.Prop>, List<Codes.Function>, Codes.Constructor>)
+                            prevResults.get(3).second;
+                    List<Codes.Code> restOfTheCode = (List<Codes.Code>) prevResults.get(4).second;
+                    Codes.Class classObj = new Codes.Class();
+                    classObj.setName(classId.getName());
+                    classObj.setInheritance(inheritanceIds);
+                    classObj.setBehavior(behaviorIds);
+                    classObj.setProperties(body.a);
+                    classObj.setFunctions(body.b);
+                    classObj.setConstructor(body.c);
+                    restOfTheCode.add(0, classObj);
+                    return restOfTheCode;
+                });
+        classContentNode.next(Collections.singletonList(sym.terminalNames[sym.EMPTY]),
+                prevResults -> new Pair<List<Codes.Identifier>, List<Codes.Function>>(
+                        new ArrayList<>(), new ArrayList<>()));
+        Node classContentExtraNode = new Node("classContentExtraNode");
+        classContentNode.next(Arrays.asList(sym.terminalNames[sym.ON], sym.terminalNames[sym.CREATED], funcParams,
+                sym.terminalNames[sym.START], rootNode, sym.terminalNames[sym.END], classContentExtraNode),
+                prevResults -> {
+                    List<Codes.Code> body = (List<Codes.Code>) prevResults.get(1).second;
+                    List<Codes.Identifier> ids = (List<Codes.Identifier>) prevResults.get(0).second;
+                    Pair<List<Codes.Prop>, List<Codes.Function>> content
+                            = (Pair<List<Codes.Prop>, List<Codes.Function>>) prevResults.get(2).second;
+                    Codes.Constructor constructor = new Codes.Constructor();
+                    constructor.setParams(ids);
+                    constructor.setBody(body);
+                    return new Triple<>(
+                            content.first,
+                            content.second,
+                            constructor
+                    );
+                });
+        classContentNode.next(Arrays.asList(sym.terminalNames[sym.DEFINE], sym.terminalNames[sym.PROP], sym.terminalNames[sym.IDENTIFIER],
+                sym.terminalNames[sym.WITH], sym.terminalNames[sym.VALUE], sym.terminalNames[sym.COLON], expNode, classContentExtraNode),
+                prevResults -> {
+                    Pair<Symbol, Object> propName = prevResults.get(0);
+                    Pair<Symbol, Object> propValue = prevResults.get(1);
+                    Codes.Prop prop = new Codes.Prop();
+                    prop.setId((Codes.Identifier)propName.second);
+                    prop.setValue((Codes.Code)propValue.second);
+                    prop.setLevel(Codes.DataLevel.InstanceLevel);
+                    Pair<List<Codes.Prop>, List<Codes.Function>> content
+                            = (Pair<List<Codes.Prop>, List<Codes.Function>>) prevResults.get(2).second;
+                    content.first.add(0, prop);
+                    return content;
+                });
+        classContentNode.next(Arrays.asList(sym.terminalNames[sym.DEFINE], sym.terminalNames[sym.FUNCTION], funcLevelNode, functionNode,
+                classContentExtraNode),
+                prevResults -> {
+                    Pair<Symbol, Object> funcLevel = prevResults.get(0);
+                    Codes.Function newLine = (Codes.Function) prevResults.get(1).second;
+                    Pair<List<Codes.Prop>, List<Codes.Function>> content
+                            = (Pair<List<Codes.Prop>, List<Codes.Function>>) prevResults.get(2).second;
+                    newLine.setLevel(((Codes.DataLevel)funcLevel.second));
+                    content.second.add(0, newLine);
+                    return content;
+                });
+        classContentExtraNode.next(Arrays.asList(sym.terminalNames[sym.DEFINE], sym.terminalNames[sym.PROP], sym.terminalNames[sym.IDENTIFIER],
+                sym.terminalNames[sym.WITH], sym.terminalNames[sym.VALUE], sym.terminalNames[sym.COLON], expNode, classContentExtraNode),
+                prevResults -> {
+                    Pair<Symbol, Object> propName = prevResults.get(0);
+                    Pair<Symbol, Object> propValue = prevResults.get(1);
+                    Codes.Prop prop = new Codes.Prop();
+                    prop.setId((Codes.Identifier)propName.second);
+                    prop.setValue((Codes.Code)propValue.second);
+                    prop.setLevel(Codes.DataLevel.InstanceLevel);
+                    Pair<List<Codes.Prop>, List<Codes.Function>> content
+                            = (Pair<List<Codes.Prop>, List<Codes.Function>>) prevResults.get(2).second;
+                    content.first.add(0, prop);
+                    return content;
+                });
+        classContentExtraNode.next(Arrays.asList(sym.terminalNames[sym.DEFINE], sym.terminalNames[sym.FUNCTION], funcLevelNode, functionNode,
+                classContentExtraNode),
+                prevResults -> {
+                    Pair<Symbol, Object> funcLevel = prevResults.get(0);
+                    Codes.Function newLine = (Codes.Function) prevResults.get(1).second;
+                    Pair<List<Codes.Prop>, List<Codes.Function>> content
+                            = (Pair<List<Codes.Prop>, List<Codes.Function>>) prevResults.get(2).second;
+                    newLine.setLevel(((Codes.DataLevel)funcLevel.second));
+                    content.second.add(0, newLine);
+                    return content;
+                });
+        classContentExtraNode.next(Collections.singletonList(epsilon),
+                prevResults -> new Pair<List<Codes.Identifier>, List<Codes.Function>>(
+                        new ArrayList<>(), new ArrayList<>()));
+        inheritanceNode.next(Arrays.asList(sym.terminalNames[sym.BASED], sym.terminalNames[sym.ON], sym.terminalNames[sym.IDENTIFIER],
+                inheritanceExtraNode),
+                prevResults -> {
+                    Codes.Identifier id = (Codes.Identifier) prevResults.get(0).second;
+                    List<Codes.Identifier> restOfTheIds = (List<Codes.Identifier>) prevResults.get(1).second;
+                    restOfTheIds.add(id);
+                    return restOfTheIds;
+                });
+        inheritanceExtraNode.next(Arrays.asList(sym.terminalNames[sym.COMMA], sym.terminalNames[sym.IDENTIFIER], inheritanceExtraNode),
+                prevResults -> {
+                    Codes.Identifier id = (Codes.Identifier) prevResults.get(0).second;
+                    List<Codes.Identifier> restOfTheIds = (List<Codes.Identifier>) prevResults.get(1).second;
+                    restOfTheIds.add(id);
+                    return restOfTheIds;
+                });
+        inheritanceExtraNode.next(Collections.singletonList(epsilon),
+                prevResults -> new ArrayList<Codes.Identifier>());
+        inheritanceNode.next(Collections.singletonList(epsilon),
+                prevResults -> new ArrayList<Codes.Identifier>());
+        behaviorNode.next(Arrays.asList(sym.terminalNames[sym.BEHAVES], sym.terminalNames[sym.LIKE], sym.terminalNames[sym.IDENTIFIER],
+                behaviorExtraNode),
+                prevResults -> {
+                    Codes.Identifier id = (Codes.Identifier) prevResults.get(0).second;
+                    List<Codes.Identifier> restOfTheIds = (List<Codes.Identifier>) prevResults.get(1).second;
+                    restOfTheIds.add(id);
+                    return restOfTheIds;
+                });
+        behaviorExtraNode.next(Arrays.asList(sym.terminalNames[sym.COMMA], sym.terminalNames[sym.IDENTIFIER], behaviorExtraNode),
+                prevResults -> {
+                    Codes.Identifier id = (Codes.Identifier) prevResults.get(0).second;
+                    List<Codes.Identifier> restOfTheIds = (List<Codes.Identifier>) prevResults.get(1).second;
+                    restOfTheIds.add(id);
+                    return restOfTheIds;
+                });
+        behaviorExtraNode.next(Collections.singletonList(epsilon),
+                prevResults -> new ArrayList<Codes.Identifier>());
+        behaviorNode.next(Collections.singletonList(epsilon),
+                prevResults -> new ArrayList<Codes.Identifier>());
+        rootNode.next(Arrays.asList(sym.terminalNames[sym.CREATE], sym.terminalNames[sym.INSTANCE], sym.terminalNames[sym.OF],
+                refNode, sym.terminalNames[sym.LPAREN], inputsNode, sym.terminalNames[sym.RPAREN], rootNode),
+                prevResults -> {
+                    Pair<Symbol, Object> classRef = prevResults.get(0);
+                    Pair<Symbol, Object> entries = prevResults.get(1);
+                    List<Codes.Code> restOfCode = (List<Codes.Code>)prevResults.get(2).second;
+                    Codes.Instantiate instantiate = new Codes.Instantiate();
+                    instantiate.setClassReference((Codes.Reference)classRef.second);
+                    instantiate.setEntries((Hashtable<String, Codes.Code>)entries.second);
+                    restOfCode.add(0, instantiate);
+                    return restOfCode;
+                });
+        rootNode.next(Arrays.asList(sym.terminalNames[sym.EXIT], sym.terminalNames[sym.LOOP], rootNode),
+                new Action() {
+                    @Override
+                    public Object act(List<Pair<Symbol, Object>> prevResults) {
+                        List<Codes.Code> codes = (List<Codes.Code>) prevResults.get(0).second;
+                        codes.add(new Codes.Break());
+                        return codes;
+                    }
+                });
+        rootNode.next(Arrays.asList(sym.terminalNames[sym.RETURN], expNode),
+                prevResults -> {
+                    Codes.Return returnObj = new Codes.Return();
+                    returnObj.setValue((Codes.Code)prevResults.get(0).second);
+                    List<Codes.Code> list = new ArrayList<>();
+                    list.add(returnObj);
+                    return list;
+                });
+        rootNode.next(Collections.singletonList(epsilon),
+                prevResults -> new ArrayList<>());

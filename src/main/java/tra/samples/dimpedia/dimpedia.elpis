@@ -1,0 +1,27 @@
+
+use "global_vars.elpis"
+use "utils.elpis"
+use "container_classes.elpis"
+use "db_context.elpis"
+use "db_functions.elpis"
+use "db_doctor.elpis"
+use "routes/index.elpis"
+use "routes/auth.elpis"
+use "routes/workplace.elpis"
+use "routes/search.elpis"
+use "routes/profile.elpis"
+
+do checkDatabaseExistence()
+do prepareAdmin()
+
+remember do HttpServer.createServer(filesPath: "/webapp", root: "/webapp") as server
+
+do HttpServer.registerRoute(server: server, path: "/api/index", pathAction: index)
+do HttpServer.registerRoute(server: server, path: "/api/auth/register", pathAction: signup)
+do HttpServer.registerRoute(server: server, path: "/api/auth/login", pathAction: signin)
+do HttpServer.registerRoute(server: server, path: "/api/workplace/add_workplace", pathAction: add_workplace)
+do HttpServer.registerRoute(server: server, path: "/api/search/search", pathAction: search)
+do HttpServer.registerRoute(server: server, path: "/api/profile/add_comment", pathAction: add_comment)
+do HttpServer.registerRoute(server: server, path: "/api/profile/get_comments", pathAction: get_comments)
+
+do HttpServer.startServer(server: server, port: 8080)

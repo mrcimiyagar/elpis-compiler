@@ -1,0 +1,3 @@
+
+define function named index with params request
+  return {message: "Welcome to DimPedia"}

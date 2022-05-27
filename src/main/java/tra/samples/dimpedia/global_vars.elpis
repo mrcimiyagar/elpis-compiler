@@ -1,0 +1,6 @@
+remember "postgres" as dbUsername
+remember "3g5h165tsK65j1s564L69ka5R168kk37sut5ls3Sk2t" as dbPassword
+remember "dimpedia_test" as dbName
+remember "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" as validUsernameSchema
+remember "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_ " as validNameSchema
+remember "+0123456789 " as validPhoneSchema

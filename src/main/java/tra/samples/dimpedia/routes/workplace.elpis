@@ -1,0 +1,62 @@
+
+define function named add_workplace with params request
+  if request.headers.token == EMPTY then
+    return {status: "error", errorCode: "e-106", message: "invalid token"}
+  remember instance of DbContext () as dbContext
+  remember do dbContext.execPrepared(query: "select * from \"sessions\" where \"token\" = $1;",
+                                       inputs: [request.headers.token]
+           ) as sessionSelector
+  remember do Pg.read(iterator: sessionSelector) as session
+  do Pg.closeRead(iterator: sessionSelector)
+  if session == EMPTY then
+    return {status: "error", errorCode: "e-108", message: "invalid token"}
+  remember do dbContext.execPrepared(query: "select * from \"users\" where \"userId\" = $1",
+                                       inputs: [session.userId]
+           ) as userSelector
+  remember do Pg.read(iterator: userSelector) as user
+  do Pg.closeRead(iterator: userSelector)
+  if user.role != "admin" then
+    return {status: "error", errorCode: "e-107", message: "access denied"}
+  remember do longify(input: request.body.ownerId) as ownerId
+  remember request.body.title as title
+  remember request.body.address as address
+  remember request.body.phone as phone
+  remember do longify(input: request.body.longitude) as longitude
+  remember do longify(input: request.body.latitude) as latitude
+  remember do longify(input: request.body.avatarId) as avatarId
+  if ownerId == 0 then
+    return {status: "error", errorCode: "e-102", message: "ownerId can not be zero"}
+  if longitude == 0 then
+    return {status: "error", errorCode: "e-102", message: "longitude can not be zero"}
+  if latitude == 0 then
+    return {status: "error", errorCode: "e-102", message: "latitude can not be zero"}
+  if avatarId == 0 then
+    return {status: "error", errorCode: "e-102", message: "avatarId can not be zero"}
+  if (do len(obj: title) > 16) or (do len(obj: title) == 0) then
+    return {status: "error", errorCode: "e-102", message: "title empty or too long"}
+  if (do len(obj: address) > 256) or (do len(obj: address) == 0) then
+    return {status: "error", errorCode: "e-102", message: "address empty or too long"}
+  if (do len(obj: phone) > 13) or (do len(obj: phone) == 0) or (not do isBuiltOf(str1: phone, str2: validPhoneSchema)) then
+    return {status: "error", errorCode: "e-102", message: "phone empty or too long"}
+  remember do dbContext.execPrepared(query: "select createWorkplace($1, $2, $3, $4, $5, $6, $7) as \"workplaceId\";",
+                                       inputs: [ownerId, title, address, phone, longitude, latitude, avatarId]
+           ) as workplaceCreator
+  remember do Pg.read(iterator: workplaceCreator) as workplace
+  do print(text: workplace)
+  do Pg.close(iterator: workplaceCreator)
+  if workplace.workplaceId == "-1" then
+    return {status: "error", errorCode: "e-109", message: "user has a workplace"}
+  else
+    return ({
+          status: "success",
+          workplace: {
+              workplaceId: workplace.workplaceId,
+              ownerId: ownerId,
+              title: title,
+              address: address,
+              phone: phone,
+              longitude: longitude,
+              latitude: latitude,
+              avatarId: avatarId
+          }
+    })
