@@ -115,6 +115,7 @@ public class sym {
   public static final int USE = 104;
   public static final int ANNOT = 105;
   public static final int NEWLINE = 106;
+  public static final int COUNT = 107;
   public static final String[] terminalNames = new String[] {
   "EOF",
   "error",
@@ -222,7 +223,8 @@ public class sym {
           "EXIT",
           "USE",
           "ANNOT",
-          "[NEWLINE]"
+          "[NEWLINE]",
+          "COUNT"
   };
 }
 
