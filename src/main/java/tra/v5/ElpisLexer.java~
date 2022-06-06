@@ -967,6 +967,8 @@ public class ElpisLexer implements java_cup.runtime.Scanner {
                 prevLineTabCount = text.length();
                 return exportToken(syms, values);
             }
+        } else {
+            return exportToken(sym.NEWLINE, yytext(), yyline, yycolumn);
         }
     }
     else {
@@ -986,6 +988,8 @@ public class ElpisLexer implements java_cup.runtime.Scanner {
                 prevLineTabCount = text.length();
                 return exportToken(syms, values);
             }
+        } else {
+            return exportToken(sym.NEWLINE, yytext(), yyline, yycolumn);
         }
     }
             } 

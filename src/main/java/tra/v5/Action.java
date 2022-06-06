@@ -1,9 +1,10 @@
 package tra.v5;
 
+import java_cup.runtime.Symbol;
+
 import java.io.Serializable;
-import java.util.ArrayList;
 
 public interface Action extends Serializable {
 
-    public Object act(Object arg);
+    public Object act(Symbol arg);
 }

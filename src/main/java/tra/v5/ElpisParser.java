@@ -5,29 +5,26 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import java_cup.runtime.Symbol;
 import tra.helpers.JsonHelper;
 import tra.models.*;
 import tra.models.temp.Path;
 import tra.models.temp.Point;
-import tra.v5.ElpisLexer;
 
 import java.io.*;
 import java.util.*;
 
 public class ElpisParser implements Serializable {
-
     public static List<FileDeps> allDependencies = new ArrayList<>();
     public static List<Codes.Code> clientSideFunctions = new ArrayList<>();
     public static HashSet<String> processedFilesSet = new HashSet<>();
-
     private ElpisLexer lexer;
     private Point root;
     private Path path;
     private List<String> dependencies;
-
     private String fileName;
     private String filePath;
-    private final String[] tokens;
+    private Symbol[] tokens;
     private final Node tree;
     private static byte[] objToByte(Node tcpPacket) throws IOException {
         ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
@@ -103,7 +100,7 @@ public class ElpisParser implements Serializable {
         Node expOperator = new Node(namePrefix + "-expOperator")
                 .addRule(sym.terminalNames[sym.SUM], StackActions.PUSH, new Action() {
                     @Override
-                    public Object act(Object arg) {
+                    public Object act(Symbol arg) {
                         Ast astSum = new Ast("sum", null);
                         Object op1 = astTree.tempMem.remove("$operand1");
                         if (op1 == null) {
@@ -123,20 +120,20 @@ public class ElpisParser implements Serializable {
                 }, expOperand)
                 .addRule(sym.terminalNames[sym.EQUAL], StackActions.PUSH, new Action() {
                     @Override
-                    public Object act(Object arg) {
+                    public Object act(Symbol arg) {
                         return null;
                     }
                 }, expOperand);
         expression.addRule(sym.terminalNames[sym.NUMBER], StackActions.PUSH, new Action() {
             @Override
-            public Object act(Object arg) {
+            public Object act(Symbol arg) {
                 astTree.memorizeTemp("$operand1", arg);
                 return null;
             }
         }, expOperator);
         expOperand.addRule(sym.terminalNames[sym.NUMBER], StackActions.PUSH, new Action() {
             @Override
-            public Object act(Object arg) {
+            public Object act(Symbol arg) {
                 Ast astOperand2 = new Ast("expression", arg);
                 astTree.putChildAst("operand2", astOperand2);
                 return null;
@@ -144,23 +141,74 @@ public class ElpisParser implements Serializable {
         }, expOperator);
         expression.addRule(sym.terminalNames[sym.NUMBER], StackActions.PUSH, new Action() {
             @Override
-            public Object act(Object arg) {
+            public Object act(Symbol arg) {
                 astTree.memorizeTemp("$operand1", arg);
                 return null;
             }
         }, expOperator);
         return expression;
     }
-    public ElpisParser() {
+    public ElpisParser(String entryPoint, String fileName, ElpisLexer lexer) {
+        HashSet<String> reservedWords = new HashSet<>();
+        for (int counter = 0; counter < sym.terminalNames.length; counter++) {
+            if (sym.terminalNames[counter].toLowerCase().equals("empty")) continue;
+            if (sym.terminalNames[counter].toLowerCase().equals("end")) continue;
+            if (sym.terminalNames[counter].toLowerCase().equals("start")) continue;
+            sym.terminalNames[counter] = sym.terminalNames[counter].toLowerCase();
+            reservedWords.add(sym.terminalNames[counter]);
+        }
+        //this.filePath = filePath;
+        this.fileName = fileName;
+        this.lexer = lexer;
 
-        this.tokens = new String[] {sym.terminalNames[sym.COUNT], sym.terminalNames[sym.IDENTIFIER],
-                sym.terminalNames[sym.NUMBER], sym.terminalNames[sym.SUM], sym.terminalNames[sym.NUMBER],
-                sym.terminalNames[sym.ARROW],
-                sym.terminalNames[sym.NUMBER], sym.terminalNames[sym.SUM], sym.terminalNames[sym.NUMBER],
-                sym.terminalNames[sym.START],
-                sym.terminalNames[sym.IDENTIFIER], sym.terminalNames[sym.ASSIGN], sym.terminalNames[sym.NUMBER], sym.terminalNames[sym.SUM], sym.terminalNames[sym.NUMBER], sym.terminalNames[sym.NEWLINE],
-                sym.terminalNames[sym.END],
-                "exit"};
+        ArrayList<Symbol> tokenList = new ArrayList<>();
+        Symbol token;
+        try {
+            while ((token = this.lexer.next_token()).value != null) {
+                if (token.sym != sym.STRING && token.value instanceof String) {
+                    token.value = ((String) token.value).trim();
+                }
+                if (token.value instanceof String) {
+                    try {
+                        token.value = Short.parseShort((String) token.value);
+                        token.sym = sym.NUMBER;
+                    } catch (Exception ex1) {
+                        try {
+                            token.value = Integer.parseInt((String) token.value);
+                            token.sym = sym.NUMBER;
+                        } catch (Exception ex2) {
+                            try {
+                                token.value = Long.parseLong((String) token.value);
+                                token.sym = sym.NUMBER;
+                            } catch (Exception ex3) {
+                                try {
+                                    token.value = Float.parseFloat((String) token.value);
+                                    token.sym = sym.NUMBER;
+                                } catch (Exception ex4) {
+                                    try {
+                                        token.value = Double.parseDouble((String) token.value);
+                                        token.sym = sym.NUMBER;
+                                    } catch (Exception ex5) {
+                                        if (token.sym != sym.START && token.sym != sym.END) {
+                                            if (!reservedWords.contains((String) token.value)) {
+                                                token.sym = sym.IDENTIFIER;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                tokenList.add(token);
+                System.out.println(sym.terminalNames[token.sym] + " " + token.value);
+            }
+            tokenList.add(new Symbol(sym.EOF, 0, 0, null));
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+
+        this.tokens = tokenList.toArray(new Symbol[0]);
 
         this.scopeStack = new Stack<>();
         this.astTree = new Ast("root", null);
@@ -179,7 +227,7 @@ public class ElpisParser implements Serializable {
         Node forCounter = new Node("for-counter");
         forCounter.addRule(sym.terminalNames[sym.IDENTIFIER], StackActions.PUSH, new Action() {
             @Override
-            public Object act(Object arg) {
+            public Object act(Symbol arg) {
                 astTree.tree.put("counter", arg);
                 scopeStack.push(new Pair<>(new ArrayList<>(), astTree));
                 return null;
@@ -187,7 +235,7 @@ public class ElpisParser implements Serializable {
         }, forStartExp);
         forStartExp.nextTable.get(sym.terminalNames[sym.NUMBER]).c.addRule(sym.terminalNames[sym.ARROW], StackActions.POP, new Action() {
             @Override
-            public Object act(Object arg) {
+            public Object act(Symbol arg) {
                 Object op1 = astTree.tempMem.remove("$operand1");
                 if (op1 != null) {
                     Ast astOperand1 = new Ast("expression", op1);
@@ -201,7 +249,7 @@ public class ElpisParser implements Serializable {
         }, forEndExp);
         forEndExp.nextTable.get(sym.terminalNames[sym.NUMBER]).c.addRule(sym.terminalNames[sym.START], StackActions.POP, new Action() {
             @Override
-            public Object act(Object arg) {
+            public Object act(Symbol arg) {
                 Object op1 = astTree.tempMem.remove("$operand1");
                 if (op1 != null) {
                     Ast astOperand1 = new Ast("expression", op1);
@@ -216,16 +264,16 @@ public class ElpisParser implements Serializable {
         }, tree);
         assignment.addRule(sym.terminalNames[sym.ASSIGN], StackActions.PUSH, new Action() {
                     @Override
-                    public Object act(Object arg) {
+                    public Object act(Symbol arg) {
                         Ast ast = new Ast("expression", null);
                         astTree.putChildAst("value", ast);
                         astTree = ast;
                         return null;
                     }
                 }, assignExp);
-        assignExp.nextTable.get(sym.terminalNames[sym.NUMBER]).c.addRule(sym.terminalNames[sym.NEWLINE], StackActions.POP, new Action() {
+        assignExp.nextTable.get(sym.terminalNames[sym.NUMBER]).c.addRule(sym.terminalNames[sym.END], StackActions.POP, new Action() {
             @Override
-            public Object act(Object arg) {
+            public Object act(Symbol arg) {
                 Object op1 = astTree.tempMem.remove("$operand1");
                 if (op1 != null) {
                     Ast astOperand1 = new Ast("expression", op1);
@@ -234,12 +282,106 @@ public class ElpisParser implements Serializable {
                 scopeStack.peek().second.putChildAst("value", astTree);
                 astTree = scopeStack.peek().second;
                 scopeStack.pop();
+                scopeStack.pop();
                 return null;
             }
         }, tree);
+        assignExp.nextTable.get(sym.terminalNames[sym.NUMBER]).c.addRule(sym.terminalNames[sym.IF], StackActions.POP, new Action() {
+            @Override
+            public Object act(Symbol arg) {
+                Object op1 = astTree.tempMem.remove("$operand1");
+                if (op1 != null) {
+                    Ast astOperand1 = new Ast("expression", op1);
+                    astTree.putChildAst("expression", astOperand1);
+                }
+                scopeStack.peek().second.putChildAst("value", astTree);
+                astTree = scopeStack.peek().second;
+                scopeStack.pop();
+
+                Ast ast = new Ast("if", null);
+                scopeStack.peek().first.add(ast);
+                astTree = ast;
+                scopeStack.peek().second = ast;
+                return null;
+            }
+        }, ifExp);
+        assignExp.nextTable.get(sym.terminalNames[sym.NUMBER]).c.addRule(sym.terminalNames[sym.COUNT], StackActions.POP, new Action() {
+            @Override
+            public Object act(Symbol arg) {
+                Object op1 = astTree.tempMem.remove("$operand1");
+                if (op1 != null) {
+                    Ast astOperand1 = new Ast("expression", op1);
+                    astTree.putChildAst("expression", astOperand1);
+                }
+                scopeStack.peek().second.putChildAst("value", astTree);
+                astTree = scopeStack.peek().second;
+                scopeStack.pop();
+
+                Ast ast = new Ast("fpr", null);
+                scopeStack.peek().first.add(ast);
+                astTree = ast;
+                scopeStack.peek().second = ast;
+                return null;
+            }
+        }, forLoopExp);
+        assignExp.nextTable.get(sym.terminalNames[sym.NUMBER]).c.addRule(sym.terminalNames[sym.WHILE], StackActions.POP, new Action() {
+            @Override
+            public Object act(Symbol arg) {
+                Object op1 = astTree.tempMem.remove("$operand1");
+                if (op1 != null) {
+                    Ast astOperand1 = new Ast("expression", op1);
+                    astTree.putChildAst("expression", astOperand1);
+                }
+                scopeStack.peek().second.putChildAst("value", astTree);
+                astTree = scopeStack.peek().second;
+                scopeStack.pop();
+
+                Ast ast = new Ast("while", null);
+                scopeStack.peek().first.add(ast);
+                astTree = ast;
+                scopeStack.peek().second = ast;
+                return null;
+            }
+        }, whileLoopExp);
+        assignExp.nextTable.get(sym.terminalNames[sym.NUMBER]).c.addRule(sym.terminalNames[sym.IDENTIFIER], StackActions.POP, new Action() {
+            @Override
+            public Object act(Symbol arg) {
+                Object op1 = astTree.tempMem.remove("$operand1");
+                if (op1 != null) {
+                    Ast astOperand1 = new Ast("expression", op1);
+                    astTree.putChildAst("expression", astOperand1);
+                }
+                scopeStack.peek().second.putChildAst("value", astTree);
+                astTree = scopeStack.peek().second;
+                scopeStack.pop();
+
+                Ast ast = new Ast("assignment", null);
+                ast.tree.put("var", arg);
+                scopeStack.peek().first.add(ast);
+                scopeStack.push(new Pair<>(new ArrayList<>(), null));
+                astTree = ast;
+                scopeStack.peek().second = ast;
+                return null;
+            }
+        }, assignment);
+        assignExp.nextTable.get(sym.terminalNames[sym.NUMBER]).c.addRule(sym.terminalNames[sym.EOF], StackActions.POP, new Action() {
+            @Override
+            public Object act(Symbol arg) {
+                Object op1 = astTree.tempMem.remove("$operand1");
+                if (op1 != null) {
+                    Ast astOperand1 = new Ast("expression", op1);
+                    astTree.putChildAst("expression", astOperand1);
+                }
+                scopeStack.peek().second.putChildAst("value", astTree);
+                astTree = scopeStack.peek().second;
+                scopeStack.pop();
+                scopeStack.pop();
+                return null;
+            }
+        }, new Node("eof"));
         ifExp.nextTable.get(sym.terminalNames[sym.NUMBER]).c.addRule(sym.terminalNames[sym.START], StackActions.POP, new Action() {
             @Override
-            public Object act(Object arg) {
+            public Object act(Symbol arg) {
                 Object op1 = astTree.tempMem.remove("$operand1");
                 if (op1 != null) {
                     Ast astOperand1 = new Ast("expression", op1);
@@ -254,7 +396,7 @@ public class ElpisParser implements Serializable {
         }, tree);
         whileLoopExp.nextTable.get(sym.terminalNames[sym.NUMBER]).c.addRule(sym.terminalNames[sym.START], StackActions.POP, new Action() {
             @Override
-            public Object act(Object arg) {
+            public Object act(Symbol arg) {
                 Object op1 = astTree.tempMem.remove("$operand1");
                 if (op1 != null) {
                     Ast astOperand1 = new Ast("expression", op1);
@@ -269,7 +411,7 @@ public class ElpisParser implements Serializable {
         }, tree);
         forLoopExp.nextTable.get(sym.terminalNames[sym.NUMBER]).c.addRule(sym.terminalNames[sym.START], StackActions.POP, new Action() {
             @Override
-            public Object act(Object arg) {
+            public Object act(Symbol arg) {
                 Object op1 = astTree.tempMem.remove("$operand1");
                 if (op1 != null) {
                     Ast astOperand1 = new Ast("expression", op1);
@@ -282,68 +424,112 @@ public class ElpisParser implements Serializable {
                 return null;
             }
         }, tree);
-        tree
-                .addRule(sym.terminalNames[sym.IDENTIFIER], StackActions.PUSH, new Action() {
+        Node afterId = new Node("afterId");
+        Node paramsList = new Node("paramsList");
+        paramsList.addRule(sym.terminalNames[sym.IDENTIFIER], StackActions.PUSH, new Action() {
+            @Override
+            public Object act(Symbol arg) {
+                Ast ast = new Ast("identifier", arg);
+                ((ArrayList<Ast>)scopeStack.peek().second.tree.get("paramsList")).add(ast);
+                return null;
+            }
+        }, paramsList);
+        paramsList.addRule(sym.terminalNames[sym.START], StackActions.PUSH, new Action() {
+            @Override
+            public Object act(Symbol arg) {
+                return null;
+            }
+        }, tree);
+        afterId.addRule(sym.terminalNames[sym.ASSIGN], StackActions.PUSH, new Action() {
+            @Override
+            public Object act(Symbol arg) {
+                Ast ast = new Ast("assignment", null);
+                ast.tree.put("var", scopeStack.peek().second.tempMem.get("identifier"));
+                scopeStack.peek().first.add(ast);
+                scopeStack.push(new Pair<>(new ArrayList<>(), null));
+                astTree = ast;
+                scopeStack.peek().second = ast;
+                return null;
+            }
+        }, assignment);
+        afterId.addRule(sym.terminalNames[sym.ON], StackActions.PUSH, new Action() {
                     @Override
-                    public Object act(Object arg) {
-                        Ast ast = new Ast("assignment", null);
-                        ast.tree.put("var", arg);
+                    public Object act(Symbol arg) {
+                        Ast ast = new Ast("function", null);
+                        ast.tree.put("functionName", scopeStack.peek().second.tempMem.get("identifier"));
+                        ast.tree.put("paramsList", new ArrayList<>());
                         scopeStack.peek().first.add(ast);
                         scopeStack.push(new Pair<>(new ArrayList<>(), null));
                         astTree = ast;
                         scopeStack.peek().second = ast;
                         return null;
                     }
-                }, assignment)
+                }, paramsList);
+        Node declaration = new Node("declaration");
+        declaration
+                .addRule(sym.terminalNames[sym.IDENTIFIER], StackActions.PUSH, new Action() {
+                    @Override
+                    public Object act(Symbol arg) {
+                        scopeStack.peek().second.memorizeTemp("identifier", arg);
+                        return null;
+                    }
+                }, afterId);
+        tree
+                .addRule(sym.terminalNames[sym.DEFINE], StackActions.PUSH, new Action() {
+                    @Override
+                    public Object act(Symbol arg) {
+                        return null;
+                    }
+                }, declaration)
                 .addRule(sym.terminalNames[sym.IF], StackActions.PUSH, new Action() {
-                    @Override
-                    public Object act(Object arg) {
-                        Ast ast = new Ast("if", null);
-                        scopeStack.peek().first.add(ast);
-                        astTree = ast;
-                        scopeStack.peek().second = ast;
-                        return null;
-                    }
-                }, ifExp)
+                            @Override
+                            public Object act(Symbol arg) {
+                                Ast ast = new Ast("if", null);
+                                scopeStack.peek().first.add(ast);
+                                astTree = ast;
+                                scopeStack.peek().second = ast;
+                                return null;
+                            }
+                        }, ifExp)
                 .addRule(sym.terminalNames[sym.WHILE], StackActions.PUSH, new Action() {
-                    @Override
-                    public Object act(Object arg) {
-                        Ast ast = new Ast("while", null);
-                        scopeStack.peek().first.add(ast);
-                        astTree = ast;
-                        scopeStack.peek().second = ast;
-                        return null;
-                    }
-                }, whileLoopExp)
+                            @Override
+                            public Object act(Symbol arg) {
+                                Ast ast = new Ast("while", null);
+                                scopeStack.peek().first.add(ast);
+                                astTree = ast;
+                                scopeStack.peek().second = ast;
+                                return null;
+                            }
+                        }, whileLoopExp)
                 .addRule(sym.terminalNames[sym.COUNT], StackActions.PUSH, new Action() {
-                    @Override
-                    public Object act(Object arg) {
-                        Ast ast = new Ast("for", null);
-                        scopeStack.peek().first.add(ast);
-                        astTree = ast;
-                        scopeStack.peek().second = ast;
-                        return null;
-                    }
-                }, forCounter)
-                .addRule("exit", StackActions.POP, new Action() {
-                    @Override
-                    public Object act(Object arg) {
-                        scopeStack.pop();
-                        return null;
-                    }
-                }, new Node("end"))
+                            @Override
+                            public Object act(Symbol arg) {
+                                Ast ast = new Ast("for", null);
+                                scopeStack.peek().first.add(ast);
+                                astTree = ast;
+                                scopeStack.peek().second = ast;
+                                return null;
+                            }
+                        }, forCounter)
+                .addRule(sym.terminalNames[sym.EOF], StackActions.POP, new Action() {
+                            @Override
+                            public Object act(Symbol arg) {
+                                scopeStack.pop();
+                                return null;
+                            }
+                        }, new Node("eof"))
                 .addRule(sym.terminalNames[sym.END], StackActions.POP, new Action() {
-            @Override
-            public Object act(Object arg) {
-                scopeStack.pop();
-                return null;
-            }
-        }, tree);
+                            @Override
+                            public Object act(Symbol arg) {
+                                scopeStack.pop();
+                                return null;
+                            }
+                        }, tree);
     }
     boolean matched = false;
     void iterate(Node node, int index, Tuple<StackActions, Action, Node, Node> prev) {
         System.out.println("using " + node.name);
-        if (node.name.equals("end") && index >= tokens.length - 1) {
+        if (node.name.equals(sym.terminalNames[sym.EOF]) && index >= tokens.length - 1) {
             matched = true;
             System.out.println("matched.");
             return;
@@ -355,8 +541,13 @@ public class ElpisParser implements Serializable {
                 } else {
                     iterate(next.getValue().c, index, next.getValue());
                 }
-            } else if (next.getKey().equals(tokens[index])) {
-                System.out.println("matched " + tokens[index]);
+            } else if ((tokens[index].sym == sym.WORD && next.getKey().equals(tokens[index].value)) ||
+                    (tokens[index].sym == sym.NUMBER && next.getKey().equals(sym.terminalNames[sym.NUMBER])) ||
+                    (tokens[index].sym == sym.IDENTIFIER && next.getKey().equals(sym.terminalNames[sym.IDENTIFIER])) ||
+                    (tokens[index].sym == sym.START && next.getKey().equals(sym.terminalNames[sym.START])) ||
+                    (tokens[index].sym == sym.END && next.getKey().equals(sym.terminalNames[sym.END])) ||
+                    (tokens[index].sym == sym.EOF && next.getKey().equals(sym.terminalNames[sym.EOF]))) {
+                System.out.println("matched value : " + tokens[index].value + " , id : " + sym.terminalNames[tokens[index].sym]);
                 next.getValue().b.act(tokens[index]);
                 if (index + 1 < tokens.length) {
                     iterate(next.getValue().c, index + 1, next.getValue());
@@ -365,21 +556,11 @@ public class ElpisParser implements Serializable {
                 }
                 if (matched) return;
             } else {
-                System.out.println("did not match " + tokens[index]);
+                System.out.println("did not match value : " + tokens[index].value + " , id : " + sym.terminalNames[tokens[index].sym]);
             }
         }
     }
     public void parse() {
-        /*for (int counter = 0; counter < sym.terminalNames.length; counter++) {
-            if (sym.terminalNames[counter].toLowerCase().equals("empty")) continue;
-            if (sym.terminalNames[counter].toLowerCase().equals("end")) continue;
-            if (sym.terminalNames[counter].toLowerCase().equals("start")) continue;
-            sym.terminalNames[counter] = sym.terminalNames[counter].toLowerCase();
-        }
-
-        this.filePath = filePath;
-        this.fileName = fileName;
-        this.lexer = lexer;*/
 
         //path = new Path();
         Node current = this.tree;

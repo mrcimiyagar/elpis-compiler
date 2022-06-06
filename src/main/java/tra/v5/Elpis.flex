@@ -187,8 +187,6 @@ STRING = "\""([^\\\"]|\\([^]|\n))*"\""
                 prevLineTabCount = text.length();
                 return exportToken(syms, values);
             }
-        } else {
-            return exportToken(sym.NEWLINE, yytext(), yyline, yycolumn);
         }
     }
     else {
@@ -215,21 +213,22 @@ EMPTY                          {if (!foundString) return exportToken(sym.EMPTY, 
 true                           {if (!foundString) return exportToken(sym.TRUE, yytext(), yyline, yycolumn); else string.append(yytext());}
 false                          {if (!foundString) return exportToken(sym.FALSE, yytext(), yyline, yycolumn); else string.append(yytext());}
 {NUMBER}                       {
+    System.out.println("hello keyhan");
     if (!foundString) {
         try {
-                            return exportToken(sym.NUMBER, Short.parseShort(yytext()), yyline, yycolumn);
+            return exportToken(sym.NUMBER, Short.parseShort(yytext()), yyline, yycolumn);
         } catch(Exception ex1) {
             try {
-                        return exportToken(sym.NUMBER, Integer.parseInt(yytext()), yyline, yycolumn);
+                return exportToken(sym.NUMBER, Integer.parseInt(yytext()), yyline, yycolumn);
             } catch(Exception ex2) {
                 try {
                     return exportToken(sym.NUMBER, Long.parseLong(yytext()), yyline, yycolumn);
                 } catch(Exception ex3) {
                     try {
-                return exportToken(sym.NUMBER, Float.parseFloat(yytext()), yyline, yycolumn);
+                        return exportToken(sym.NUMBER, Float.parseFloat(yytext()), yyline, yycolumn);
                     } catch(Exception ex4) {
                         try {
-            return exportToken(sym.NUMBER, Double.parseDouble(yytext()), yyline, yycolumn);
+                            return exportToken(sym.NUMBER, Double.parseDouble(yytext()), yyline, yycolumn);
                         } catch(Exception ex5) {
                             return exportToken(sym.NUMBER, Boolean.parseBoolean(yytext()), yyline, yycolumn);
                         }
